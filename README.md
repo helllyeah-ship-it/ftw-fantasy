@@ -89,21 +89,24 @@ The lineup optimizer and roster views now display weekly projected fantasy point
 
 
 
-## HuddleBot weekly projection provider
 
-FTW Fantasy now uses HuddleBot as its external weekly projection source.
+## Sleeper weekly projection feed
 
-### Setup
-No API key or account is required.
+FTW Fantasy now uses Sleeper's weekly projection service so no separate API key is required.
 
-The server route `/api/provider/projections` requests HuddleBot's public projection feed and caches results for five minutes. FTW matches returned players to Sleeper players by Sleeper ID when available, then falls back to normalized player name + team.
+### Important note
+Sleeper's official public documentation does not currently document projections, even though the projection endpoint is available and is used by third-party Sleeper API clients. Because this endpoint is undocumented, Sleeper could change or remove it in the future.
 
-### Reliability safeguard
-HuddleBot is a small independent public service and its public documentation does not expose every endpoint detail in search-indexed text. To make the integration resilient, the adapter checks the common public projection routes and supports an optional `HUDDLEBOT_API_URL` Netlify environment variable if HuddleBot changes the route.
+FTW therefore keeps a fallback model and never fabricates a projection if the feed is unavailable.
 
-If HuddleBot is unreachable or changes its response format, FTW stays online and falls back to its internal model instead of displaying false provider projections.
+### Projection display
+FTW selects:
+- PPR projection for leagues with 1.0 points per reception
+- Half-PPR projection for leagues with 0.5 points per reception
+- Standard projection for leagues with 0 points per reception
 
-### Data sources
-- Sleeper: league, roster, player status, scoring settings and trending movement
-- HuddleBot: weekly fantasy projection when its public feed is available
-- FTW: lineup, Start/Sit, trade and waiver decision logic
+Player matching uses Sleeper player IDs first, which is more reliable than name matching.
+
+
+## Sleeper projection hotfix
+This version corrects the projection host to `api.sleeper.com`, while keeping `api.sleeper.app` as a fallback. It also handles both array responses and object responses keyed by Sleeper player ID. Rows are only accepted when an actual weekly points field (`pts_ppr`, `pts_half_ppr`, or `pts_std`) exists.

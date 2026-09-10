@@ -1,4 +1,4 @@
-import { huddleBotProjections } from "@/lib/huddlebot";
+import { sleeperWeeklyProjections } from "@/lib/sleeperprojections";
 
 export async function GET(req) {
   const url = new URL(req.url);
@@ -6,33 +6,35 @@ export async function GET(req) {
   const week = url.searchParams.get("week");
 
   if (!season || !week) {
-    return Response.json({ error: "season and week are required" }, { status: 400 });
+    return Response.json(
+      { error: "season and week are required" },
+      { status: 400 }
+    );
   }
 
   try {
-    const result = await huddleBotProjections({
+    const result = await sleeperWeeklyProjections({
       season: Number(season),
       week: Number(week)
     });
 
     return Response.json({
-      configured: result.configured,
-      provider: "HuddleBot",
+      configured: true,
+      provider: result.provider,
+      endpoint: result.endpoint,
       retrievedAt: new Date().toISOString(),
       season: Number(season),
       week: Number(week),
-      endpoint: result.endpoint || null,
-      projections: result.projections || [],
-      errors: result.configured ? undefined : result.errors
-    }, { status: 200 });
+      projections: result.projections
+    });
   } catch (error) {
     return Response.json({
       configured: false,
-      provider: "HuddleBot",
-      error: "HuddleBot projection request failed",
+      provider: "Sleeper",
+      error: "Sleeper projection feed unavailable",
       detail: String(error?.message || error),
       retrievedAt: new Date().toISOString(),
       projections: []
-    }, { status: 200 });
+    });
   }
 }

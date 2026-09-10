@@ -45,7 +45,7 @@ export default function Dashboard(){
   const [pos,setPos]=useState("ALL");
   const [gmMessages,setGmMessages]=useState([{who:"bot",text:"Ask me about your roster, trades, starters or waivers."}]);
   const [gmText,setGmText]=useState("");
-  const [projectionFeed,setProjectionFeed]=useState({configured:false,provider:"HuddleBot",retrievedAt:null,projections:[]});
+  const [projectionFeed,setProjectionFeed]=useState({configured:false,provider:"Sleeper",retrievedAt:null,projections:[]});
   const [projectionError,setProjectionError]=useState("");
 
   useEffect(()=>{
@@ -97,8 +97,13 @@ export default function Dashboard(){
 
   const projectedFantasyPoints=(p)=>{
     const pr=projectionFor(p);
-    if(!pr || !Number.isFinite(Number(pr.projectedPoints))) return null;
-    return Math.round(Number(pr.projectedPoints)*10)/10;
+    if(!pr)return null;
+    const rec=Number(league?.scoring_settings?.rec ?? 0.5);
+    let value = rec>=1 ? pr.projectedPointsPpr : rec>=0.5 ? pr.projectedPointsHalf : pr.projectedPointsStd;
+    if(!Number.isFinite(Number(value))) {
+      value = pr.projectedPointsHalf ?? pr.projectedPointsPpr ?? pr.projectedPointsStd;
+    }
+    return Number.isFinite(Number(value)) ? Math.round(Number(value)*10)/10 : null;
   };
 
   const score=(p)=>{
@@ -281,11 +286,11 @@ export default function Dashboard(){
       <section className="providerBar glass">
         <div>
           <small>PROJECTION ENGINE</small>
-          <b>{projectionFeed.configured ? "HUDDLEBOT CONNECTED" : "HUDDLEBOT FEED UNAVAILABLE"}</b>
+          <b>{projectionFeed.configured ? "SLEEPER PROJECTIONS LIVE" : "SLEEPER PROJECTIONS UNAVAILABLE"}</b>
           <span>{projectionFeed.configured
             ? `${projectionFeed.projections.length} weekly player projections loaded${projectionFeed.retrievedAt?` • refreshed ${new Date(projectionFeed.retrievedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`:""}`
-            : "No API key is required. FTW will use its fallback model if the public HuddleBot feed is unavailable."}</span>
-          {projectionFeed.configured&&<span className="providerAttribution">Public HuddleBot projection feed • no API key</span>}
+            : (projectionFeed.detail ? `Projection feed error: ${projectionFeed.detail}` : "No API key required. FTW is pulling the current week projection feed from Sleeper.")}</span>
+          {projectionFeed.configured&&<span className="providerAttribution">Sleeper weekly projection feed • no API key</span>}
         </div>
         <div className={projectionFeed.configured?"providerDot on":"providerDot"} />
       </section>
@@ -337,7 +342,7 @@ export default function Dashboard(){
             startWinner.injury_status ? `Risk: ${startWinner.injury_status} injury designation should be checked again before lineup lock` : "No current Sleeper injury designation is shown",
             `The recommendation is tuned to your ${format.label} scoring format`
           ]}/>
-          <div className="accuracyNote"><b>Data source:</b> {projectionFor(startWinner) ? "weekly projection from HuddleBot + your Sleeper league settings and live player metadata." : "Sleeper live metadata + FTW fallback model because the HuddleBot feed is currently unavailable."}</div>
+          <div className="accuracyNote"><b>Data source:</b> {projectionFor(startWinner) ? "weekly projection from Sleeper + your league settings and live player metadata." : "Sleeper live metadata + FTW fallback model because the weekly projection feed is currently unavailable."}</div>
         </div>}
       </section>}
 
@@ -406,7 +411,7 @@ export default function Dashboard(){
       <section className="ticker glass"><b>FTW WIRE</b><span>{trending.slice(0,8).map(t=>players[t.player_id]).filter(Boolean).map(name).join(" • ")||"Connecting to live player movement…"}</span></section>
     </div>
 
-    <footer><b>FTW FANTASY</b><span>Fantasy decisions without the clutter.</span><small>League/roster/player movement uses Sleeper. Weekly projections use HuddleBot when its public feed is available. FTW combines those inputs into recommendations; no projection guarantees an outcome.</small></footer>
+    <footer><b>FTW FANTASY</b><span>Fantasy decisions without the clutter.</span><small>League/roster/player movement uses Sleeper. Weekly projections use Sleeper when its projection feed is available. FTW combines those inputs into recommendations; no projection guarantees an outcome.</small></footer>
   </main>
 }
 
