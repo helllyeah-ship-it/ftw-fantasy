@@ -585,6 +585,60 @@ export default function Dashboard(){
 
 function Head({kicker,title}){return <div className="head"><div><small>{kicker}</small><h2>{title}</h2></div></div>}
 function Stat({label,value}){return <div className="stat glass"><small>{label}</small><b>{value}</b></div>}
-function PlayerPicker({label,value,set,pool,score,projection,onPlayer}){const p=pool.find(x=>id(x)===String(value));return <div className="picker glass"><label>{label}</label><select value={value} onChange={e=>set(e.target.value)}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} — {p.position}</option>)}</select>{p&&<button type="button" className="focus playerFocusButton" onClick={()=>onPlayer?.(p)}><PlayerAvatar p={p} size="lg"/><div className="focusInfo"><strong>{projection?.(p)!==null?`${projection(p).toFixed(1)} pts`:score(p)}</strong><b>{name(p)}</b><small>{projection?.(p)!==null?"LIVE WEEKLY PROJECTION":"FTW FALLBACK SCORE"} • {p.position} • {p.team||"FA"} • {p.injury_status||p.status||"Active"}</small></div></button></div>}</div>}
-function Why({title,items}){return <div className="why"><b>{title}</b><ul>{items.filter(Boolean).slice(0,7).map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
-function TradeSide({label,ids,onChange,pool,value,valueFn,onPlayer}){return <div className="tradeSide glass"><label>{label}</label><select multiple size={10} value={ids} onChange={onChange}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} • {p.position} • {valueFn(p)}</option>)}</select><div className="tradeSelected">{ids.map(pid=>{const p=pool.find(x=>id(x)===String(pid));return p?<button type="button" className="tradeSelectedPlayer" key={pid} onClick={()=>onPlayer?.(p)}><PlayerAvatar p={p} size="xs"/><span>{name(p)}</span></button>:null})}</div><div className="package"><span>PACKAGE</span><b>{value}</b></div></div>}
+function PlayerPicker({label,value,set,pool,score,projection,onPlayer}){
+  const p=pool.find(x=>id(x)===String(value));
+  return <div className="picker glass">
+    <label>{label}</label>
+    <select value={value} onChange={e=>set(e.target.value)}>
+      {pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} — {p.position}</option>)}
+    </select>
+    {p&&<button
+      type="button"
+      className="focus playerFocusButton"
+      onClick={()=>onPlayer?.(p)}
+    >
+      <PlayerAvatar p={p} size="lg"/>
+      <div className="focusInfo">
+        <strong>{projection?.(p)!==null?`${projection(p).toFixed(1)} pts`:score(p)}</strong>
+        <b>{name(p)}</b>
+        <small>{projection?.(p)!==null?"LIVE WEEKLY PROJECTION":"FTW FALLBACK SCORE"} • {p.position} • {p.team||"FA"} • {p.injury_status||p.status||"Active"}</small>
+      </div>
+    </button>}
+  </div>;
+}
+
+function Why({title,items}){
+  return <div className="why">
+    <b>{title}</b>
+    <ul>
+      {items.filter(Boolean).slice(0,7).map((x,i)=><li key={i}>{x}</li>)}
+    </ul>
+  </div>;
+}
+
+function TradeSide({label,ids,onChange,pool,value,valueFn,onPlayer}){
+  return <div className="tradeSide glass">
+    <label>{label}</label>
+    <select multiple size={10} value={ids} onChange={onChange}>
+      {pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} • {p.position} • {valueFn(p)}</option>)}
+    </select>
+    <div className="tradeSelected">
+      {ids.map(pid=>{
+        const p=pool.find(x=>id(x)===String(pid));
+        return p?<button
+          type="button"
+          className="tradeSelectedPlayer"
+          key={pid}
+          onClick={()=>onPlayer?.(p)}
+        >
+          <PlayerAvatar p={p} size="xs"/>
+          <span>{name(p)}</span>
+        </button>:null;
+      })}
+    </div>
+    <div className="package">
+      <span>PACKAGE</span>
+      <b>{value}</b>
+    </div>
+  </div>;
+}
