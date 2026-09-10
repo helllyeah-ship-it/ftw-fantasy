@@ -180,3 +180,18 @@ FTW now:
 The player profile also displays a floor, expected projection, ceiling, confidence level and projected opportunity when the underlying inputs are available.
 
 Important: FTW projections are model estimates. They are not official NFL projections or guarantees of fantasy performance.
+
+
+## 2025 defense strength-of-schedule color upgrade
+FTW now shows matchup difficulty as a color instead of a word:
+- Green = great matchup (opponent defense rank 23–32)
+- Yellow = okay matchup (rank 11–22)
+- Red = bad matchup (rank 1–10)
+
+Position-specific matchup source:
+- RB uses the opponent's 2025 rush-defense rank.
+- QB and WR use the opponent's 2025 pass-defense rank.
+- TE also uses 2025 pass-defense rank.
+- Rank #1 is the toughest defense and #32 is the most favorable matchup.
+
+The defense API now retains the complete available 2025 ESPN team-stat payload and exposes additional passing, rushing, scoring and situational defensive fields for future FTW models. Player cards display the relevant defense rank and available supporting metrics such as yards allowed per game, touchdowns allowed, interceptions, sacks and yards per carry.

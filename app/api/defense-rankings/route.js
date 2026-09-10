@@ -18,10 +18,7 @@ function collectStats(node,out=[]){
     return out;
   }
 
-  if(
-    typeof node.name==="string" &&
-    (node.value!==undefined || node.displayValue!==undefined)
-  ){
+  if(typeof node.name==="string" && (node.value!==undefined || node.displayValue!==undefined)){
     out.push({
       name:String(node.name||""),
       label:String(node.label||node.displayName||""),
@@ -50,6 +47,24 @@ function findStat(stats,names){
   return null;
 }
 
+function statMap(stats){
+  const map={};
+  for(const stat of stats){
+    if(!stat?.name)continue;
+    const key=String(stat.name);
+    if(map[key]===undefined){
+      map[key]=Number.isFinite(stat.value)?stat.value:stat.displayValue;
+    }
+  }
+  return map;
+}
+
+function perGame(total,direct,games){
+  if(Number.isFinite(direct))return direct;
+  if(Number.isFinite(total)&&games>0)return total/games;
+  return null;
+}
+
 async function teamDefense(abbr,id){
   const url=`https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/types/2/teams/${id}/statistics`;
   const res=await fetch(url,{next:{revalidate:86400}});
@@ -59,19 +74,18 @@ async function teamDefense(abbr,id){
 
   const games=findStat(stats,["gamesPlayed","games played"])||17;
 
-  let passYards=findStat(stats,[
+  const passYards=findStat(stats,[
     "passingYardsAllowed","netPassingYardsAllowed","passYardsAllowed",
     "opponentPassingYards","passing yards allowed"
   ]);
-  let rushYards=findStat(stats,[
+  const rushYards=findStat(stats,[
     "rushingYardsAllowed","rushYardsAllowed","opponentRushingYards",
     "rushing yards allowed"
   ]);
-  let pointsAllowed=findStat(stats,[
+  const pointsAllowed=findStat(stats,[
     "pointsAllowed","opponentPoints","totalPointsAllowed","points allowed"
   ]);
 
-  // ESPN sometimes exposes per-game values directly.
   const passPerGame=findStat(stats,[
     "passingYardsAllowedPerGame","opponentPassingYardsPerGame","passing yards allowed per game"
   ]);
@@ -82,11 +96,75 @@ async function teamDefense(abbr,id){
     "pointsAllowedPerGame","opponentPointsPerGame","points allowed per game"
   ]);
 
+  const passAttemptsAllowed=findStat(stats,[
+    "passingAttemptsAllowed","opponentPassingAttempts","pass attempts allowed"
+  ]);
+  const passCompletionsAllowed=findStat(stats,[
+    "passingCompletionsAllowed","opponentPassingCompletions","pass completions allowed"
+  ]);
+  const passTdsAllowed=findStat(stats,[
+    "passingTouchdownsAllowed","passTouchdownsAllowed","opponentPassingTouchdowns","passing touchdowns allowed"
+  ]);
+  const interceptions=findStat(stats,[
+    "interceptions","defensiveInterceptions","passesIntercepted","interceptions made"
+  ]);
+  const sacks=findStat(stats,["sacks","defensiveSacks","sacks made"]);
+  const opponentPasserRating=findStat(stats,[
+    "opponentPasserRating","passerRatingAllowed","opponent quarterback rating"
+  ]);
+  const passYardsPerAttempt=findStat(stats,[
+    "opponentYardsPerPassAttempt","passingYardsPerAttemptAllowed","yards per pass attempt allowed"
+  ]);
+
+  const rushAttemptsAllowed=findStat(stats,[
+    "rushingAttemptsAllowed","opponentRushingAttempts","rush attempts allowed"
+  ]);
+  const rushTdsAllowed=findStat(stats,[
+    "rushingTouchdownsAllowed","rushTouchdownsAllowed","opponentRushingTouchdowns","rushing touchdowns allowed"
+  ]);
+  const rushYardsPerAttempt=findStat(stats,[
+    "opponentYardsPerRushAttempt","rushingYardsPerAttemptAllowed","yards per rush attempt allowed","yards per carry allowed"
+  ]);
+
+  const takeaways=findStat(stats,["takeaways","totalTakeaways","takeaways total"]);
+  const fumbleRecoveries=findStat(stats,["fumbleRecoveries","defensiveFumbleRecoveries"]);
+  const thirdDownPct=findStat(stats,[
+    "opponentThirdDownConvPct","thirdDownConversionPctAllowed","third down conversion percentage allowed"
+  ]);
+  const redZonePct=findStat(stats,[
+    "opponentRedZonePct","redZoneTouchdownPctAllowed","red zone touchdown percentage allowed"
+  ]);
+
   return {
     team:abbr,
-    passYardsPerGame:Number.isFinite(passPerGame)?passPerGame:(Number.isFinite(passYards)?passYards/games:null),
-    rushYardsPerGame:Number.isFinite(rushPerGame)?rushPerGame:(Number.isFinite(rushYards)?rushYards/games:null),
-    pointsAllowedPerGame:Number.isFinite(pointsPerGame)?pointsPerGame:(Number.isFinite(pointsAllowed)?pointsAllowed/games:null)
+    games,
+    passYardsPerGame:perGame(passYards,passPerGame,games),
+    rushYardsPerGame:perGame(rushYards,rushPerGame,games),
+    pointsAllowedPerGame:perGame(pointsAllowed,pointsPerGame,games),
+
+    passing:{
+      attemptsAllowed:passAttemptsAllowed,
+      completionsAllowed:passCompletionsAllowed,
+      touchdownsAllowed:passTdsAllowed,
+      interceptions,
+      sacks,
+      passerRatingAllowed:opponentPasserRating,
+      yardsPerAttemptAllowed:passYardsPerAttempt
+    },
+    rushing:{
+      attemptsAllowed:rushAttemptsAllowed,
+      touchdownsAllowed:rushTdsAllowed,
+      yardsPerAttemptAllowed:rushYardsPerAttempt
+    },
+    situational:{
+      takeaways,
+      fumbleRecoveries,
+      thirdDownPctAllowed:thirdDownPct,
+      redZoneTdPctAllowed:redZonePct
+    },
+
+    // Keep the complete 2025 stat payload available for FTW's future models.
+    allStats:statMap(stats)
   };
 }
 
@@ -100,11 +178,11 @@ function rank(rows,key){
 export async function GET(){
   try{
     const rows=(await Promise.all(
-      Object.entries(TEAM_IDS).map(([abbr,id])=>
-        teamDefense(abbr,id).catch(()=>null)
-      )
+      Object.entries(TEAM_IDS).map(([abbr,id])=>teamDefense(abbr,id).catch(()=>null))
     )).filter(Boolean);
 
+    // FTW matchup ranking:
+    // #1 allows the fewest yards/game (toughest); #32 allows the most (best matchup).
     const passRanks=rank(rows,"passYardsPerGame");
     const rushRanks=rank(rows,"rushYardsPerGame");
     const overallRanks=rank(rows,"pointsAllowedPerGame");
@@ -117,20 +195,25 @@ export async function GET(){
         overallRank:overallRanks[row.team]||null,
         passYardsPerGame:row.passYardsPerGame,
         rushYardsPerGame:row.rushYardsPerGame,
-        pointsAllowedPerGame:row.pointsAllowedPerGame
+        pointsAllowedPerGame:row.pointsAllowedPerGame,
+        passing:row.passing,
+        rushing:row.rushing,
+        situational:row.situational,
+        allStats:row.allStats
       };
     }
 
     return Response.json({
       season:2025,
+      source:"ESPN 2025 regular-season team statistics",
       methodology:{
-        QB:"2025 opponent pass-yards-allowed rank",
-        WR:"2025 opponent pass-yards-allowed rank",
-        TE:"2025 opponent pass-yards-allowed rank",
-        RB:"2025 opponent rush-yards-allowed rank",
-        other:"2025 opponent points-allowed rank",
-        rankMeaning:"#1 = toughest defense, #32 = most favorable",
-        tiers:"Hard 1-10, Medium 11-22, Easy 23-32"
+        QB:"2025 opponent pass-yards-allowed per game rank",
+        WR:"2025 opponent pass-yards-allowed per game rank",
+        TE:"2025 opponent pass-yards-allowed per game rank",
+        RB:"2025 opponent rush-yards-allowed per game rank",
+        other:"2025 opponent points-allowed per game rank",
+        rankMeaning:"#1 = toughest defense, #32 = most favorable matchup",
+        colorTiers:"Red 1-10, Yellow 11-22, Green 23-32"
       },
       rankings,
       retrievedAt:new Date().toISOString()

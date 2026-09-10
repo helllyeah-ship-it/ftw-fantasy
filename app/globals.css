@@ -615,3 +615,54 @@ button,input,select{font:inherit}.topbar{height:66px;position:sticky;top:0;z-ind
   .projectionRange,
   .workloadGrid{grid-template-columns:repeat(2,1fr)}
 }
+
+
+/* 2025 defense-based strength of schedule colors */
+.matchupLegend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin:10px 0 12px;
+  color:var(--muted);
+  font-size:9px;
+  font-weight:800;
+}
+.matchupLegend span{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.matchupDot{
+  display:inline-block;
+  width:14px;
+  height:14px;
+  min-width:14px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.2);
+  box-shadow:0 0 10px rgba(255,255,255,.08);
+}
+.matchupDot.great{
+  background:#34e87a;
+  box-shadow:0 0 12px rgba(52,232,122,.45);
+}
+.matchupDot.okay{
+  background:#ffd84d;
+  box-shadow:0 0 12px rgba(255,216,77,.40);
+}
+.matchupDot.bad{
+  background:#ff4d5e;
+  box-shadow:0 0 12px rgba(255,77,94,.42);
+}
+.matchupDot.unknown{
+  background:#777;
+  box-shadow:none;
+}
+.futureGame>.matchupDot{
+  justify-self:end;
+  align-self:center;
+}
+.defenseRank{
+  grid-column:1/-1;
+  margin-top:5px;
+  line-height:1.35;
+}

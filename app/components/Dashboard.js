@@ -619,29 +619,41 @@ export default function Dashboard(){
       let rank=null;
       let stat=null;
       let metric="OVERALL";
+      let details=null;
+
       if(ranks){
         if(["QB","WR","TE"].includes(position)){
           rank=ranks.passRank;
           stat=ranks.passYardsPerGame;
           metric="PASS";
+          details=ranks.passing||null;
         }else if(position==="RB"){
           rank=ranks.rushRank;
           stat=ranks.rushYardsPerGame;
           metric="RUSH";
+          details=ranks.rushing||null;
         }else{
           rank=ranks.overallRank;
           stat=ranks.pointsAllowedPerGame;
           metric="OVERALL";
+          details=ranks.situational||null;
         }
       }
 
-      // Rank 1 = toughest 2025 defense. Rank 32 = most favorable.
-      let difficulty="TBD";
+      let matchupColor="unknown";
       if(Number.isFinite(Number(rank))){
-        difficulty=Number(rank)<=10?"HARD":Number(rank)>=23?"EASY":"MEDIUM";
+        matchupColor=Number(rank)<=10?"bad":Number(rank)>=23?"great":"okay";
       }
 
-      return {...row,points,difficulty,defenseRank:rank,defenseMetric:metric,defenseStat:stat};
+      return {
+        ...row,
+        points,
+        matchupColor,
+        defenseRank:rank,
+        defenseMetric:metric,
+        defenseStat:stat,
+        defenseDetails:details
+      };
     });
   };
 
@@ -898,13 +910,30 @@ export default function Dashboard(){
               </div>:null})()}
 
               <div className="modalSection">
-                <div className="modalSectionHead"><div><small>REST OF SEASON</small><h3>Schedule + projections</h3></div><span>Difficulty uses the opponent’s 2025 defensive results. Rank #1 is toughest; #32 is most favorable. QB/WR/TE use pass defense and RB uses rush defense.</span></div>
+                <div className="modalSectionHead"><div><small>REST OF SEASON</small><h3>Schedule + projections</h3></div><span>Matchup color uses 2025 opponent defense: RB = rush-defense rank; QB/WR/TE = pass-defense rank. #1 is toughest and #32 is most favorable.</span></div>
+                <div className="matchupLegend">
+                  <span><i className="matchupDot great"/> Great matchup</span>
+                  <span><i className="matchupDot okay"/> Okay matchup</span>
+                  <span><i className="matchupDot bad"/> Bad matchup</span>
+                </div>
                 <div className="futureGrid">
                   {rows.length?rows.map(row=><div className="futureGame" key={row.week}>
                     <div><b>W{row.week}</b><small>{row.matchup?.homeAway==="home"?"vs":"@"} {row.matchup?.opponent||"TBD"}</small></div>
                     <strong>{Number.isFinite(row.points)?row.points.toFixed(1):"—"}</strong>
-                    <span className={`difficulty ${String(row.difficulty).toLowerCase()}`}>{row.difficulty}</span>
-                    {Number.isFinite(Number(row.defenseRank))&&<small className="defenseRank">2025 {row.defenseMetric} DEF #{row.defenseRank}{Number.isFinite(Number(row.defenseStat))?` • ${Number(row.defenseStat).toFixed(1)} allowed/g`:""}</small>}
+                    <span
+                      className={`matchupDot ${row.matchupColor}`}
+                      title={row.matchupColor==="great"?"Great matchup":row.matchupColor==="okay"?"Okay matchup":row.matchupColor==="bad"?"Bad matchup":"Matchup unavailable"}
+                      aria-label={row.matchupColor==="great"?"Great matchup":row.matchupColor==="okay"?"Okay matchup":row.matchupColor==="bad"?"Bad matchup":"Matchup unavailable"}
+                    />
+                    {Number.isFinite(Number(row.defenseRank))&&<small className="defenseRank">
+                      2025 {row.defenseMetric} DEF #{row.defenseRank}
+                      {Number.isFinite(Number(row.defenseStat))?` • ${Number(row.defenseStat).toFixed(1)} yds/g`:""}
+                      {row.defenseMetric==="PASS"&&Number.isFinite(Number(row.defenseDetails?.touchdownsAllowed))?` • ${Number(row.defenseDetails.touchdownsAllowed)} pass TD allowed`:""}
+                      {row.defenseMetric==="PASS"&&Number.isFinite(Number(row.defenseDetails?.interceptions))?` • ${Number(row.defenseDetails.interceptions)} INT`:""}
+                      {row.defenseMetric==="PASS"&&Number.isFinite(Number(row.defenseDetails?.sacks))?` • ${Number(row.defenseDetails.sacks)} sacks`:""}
+                      {row.defenseMetric==="RUSH"&&Number.isFinite(Number(row.defenseDetails?.touchdownsAllowed))?` • ${Number(row.defenseDetails.touchdownsAllowed)} rush TD allowed`:""}
+                      {row.defenseMetric==="RUSH"&&Number.isFinite(Number(row.defenseDetails?.yardsPerAttemptAllowed))?` • ${Number(row.defenseDetails.yardsPerAttemptAllowed).toFixed(1)} YPC`:""}
+                    </small>}
                   </div>):<p className="muted">Future weekly projections are not available from the current projection feed.</p>}
                 </div>
               </div>
