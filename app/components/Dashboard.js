@@ -87,17 +87,20 @@ export default function Dashboard(){
   const [playerInsight,setPlayerInsight]=useState(null);
   const [playerInsightLoading,setPlayerInsightLoading]=useState(false);
   const [playerInsightError,setPlayerInsightError]=useState("");
+  const [defenseRankings,setDefenseRankings]=useState({});
+  const [weekMatchups,setWeekMatchups]=useState({});
 
   useEffect(()=>{
     (async()=>{
       try{
-        const [s,p,t,d]=await Promise.all([
+        const [s,p,t,d,def]=await Promise.all([
           safeJson("/api/sleeper/state"),
           safeJson("/api/sleeper/players"),
           safeJson("/api/sleeper/trending?type=add&hours=24&limit=30"),
-          safeJson("/api/sleeper/trending?type=drop&hours=24&limit=30")
+          safeJson("/api/sleeper/trending?type=drop&hours=24&limit=30"),
+          safeJson("/api/defense-rankings").catch(()=>({rankings:{}}))
         ]);
-        setNfl(s);setPlayers(p);setTrending(t);setTrendingDrops(d);
+        setNfl(s);setPlayers(p);setTrending(t);setTrendingDrops(d);setDefenseRankings(def?.rankings||{});
       }catch(e){setStatus("Live feed is temporarily unavailable. Demo Mode still works.");}
     })();
   },[]);
@@ -106,8 +109,12 @@ export default function Dashboard(){
     if(!nfl?.season || !nfl?.week) return;
     (async()=>{
       try{
-        const feed = await safeJson(`/api/provider/projections?season=${nfl.season}&week=${nfl.week}`);
+        const [feed,matchupFeed]=await Promise.all([
+          safeJson(`/api/provider/projections?season=${nfl.season}&week=${nfl.week}`),
+          safeJson(`/api/week-matchups?season=${nfl.season}&week=${nfl.week}`).catch(()=>({matchups:{}}))
+        ]);
         setProjectionFeed(feed);
+        setWeekMatchups(matchupFeed?.matchups||{});
         setProjectionError("");
       }catch(e){
         setProjectionError(e.message || "Projection feed unavailable");
@@ -135,15 +142,121 @@ export default function Dashboard(){
     return {ppr,sf,te,label:`${sf?"SUPERFLEX • ":""}${ppr>=1?"PPR":ppr>=.5?"HALF PPR":"STANDARD"}${te>0?" • TE+":""}`};
   },[league]);
 
-  const projectedFantasyPoints=(p)=>{
+  const scoringValue=(key,fallback)=>{
+    const s=league?.scoring_settings||{};
+    const n=Number(s[key]);
+    return Number.isFinite(n)?n:fallback;
+  };
+
+  const rawFantasyPoints=(p)=>{
     const pr=projectionFor(p);
     if(!pr)return null;
-    const rec=Number(league?.scoring_settings?.rec ?? 0.5);
-    let value = rec>=1 ? pr.projectedPointsPpr : rec>=0.5 ? pr.projectedPointsHalf : pr.projectedPointsStd;
-    if(!Number.isFinite(Number(value))) {
-      value = pr.projectedPointsHalf ?? pr.projectedPointsPpr ?? pr.projectedPointsStd;
+
+    const fields=[
+      pr.passingYards,pr.passingTouchdowns,pr.passingInterceptions,
+      pr.rushingYards,pr.rushingTouchdowns,pr.receptions,
+      pr.receivingYards,pr.receivingTouchdowns
+    ];
+    const hasRealStatLine=fields.some(v=>Number(v)>0);
+    if(!hasRealStatLine)return null;
+
+    let pts=0;
+    pts+=Number(pr.passingYards||0)*scoringValue("pass_yd",0.04);
+    pts+=Number(pr.passingTouchdowns||0)*scoringValue("pass_td",4);
+    pts+=Number(pr.passingInterceptions||0)*scoringValue("pass_int",-2);
+    pts+=Number(pr.rushingYards||0)*scoringValue("rush_yd",0.1);
+    pts+=Number(pr.rushingTouchdowns||0)*scoringValue("rush_td",6);
+    pts+=Number(pr.receptions||0)*scoringValue("rec",0);
+    pts+=Number(pr.receivingYards||0)*scoringValue("rec_yd",0.1);
+    pts+=Number(pr.receivingTouchdowns||0)*scoringValue("rec_td",6);
+    pts+=Number(pr.fumblesLost||0)*scoringValue("fum_lost",-2);
+    pts+=Number(pr.passingTwoPointConversions||0)*scoringValue("pass_2pt",2);
+    pts+=Number(pr.rushingTwoPointConversions||0)*scoringValue("rush_2pt",2);
+    pts+=Number(pr.receivingTwoPointConversions||0)*scoringValue("rec_2pt",2);
+
+    if(p?.position==="TE"){
+      pts+=Number(pr.receptions||0)*scoringValue("bonus_rec_te",0);
     }
-    return Number.isFinite(Number(value)) ? Math.round(Number(value)*10)/10 : null;
+
+    return Math.max(0,pts);
+  };
+
+  const matchupAdjustment=(p)=>{
+    const team=String(p?.team||"").toUpperCase();
+    const opp=String(weekMatchups?.[team]?.opponent||"").toUpperCase();
+    const ranks=defenseRankings?.[opp];
+    if(!ranks)return {factor:1,opponent:opp||"TBD",rank:null,metric:null};
+
+    let rank=null;
+    let metric=null;
+    if(["QB","WR","TE"].includes(p.position)){
+      rank=Number(ranks.passRank);
+      metric="PASS";
+    }else if(p.position==="RB"){
+      rank=Number(ranks.rushRank);
+      metric="RUSH";
+    }else{
+      rank=Number(ranks.overallRank);
+      metric="OVERALL";
+    }
+
+    if(!Number.isFinite(rank))return {factor:1,opponent:opp||"TBD",rank:null,metric};
+
+    // Keep matchup impact modest: opponent defense matters, but volume/talent
+    // should remain the dominant projection signal.
+    const centered=(rank-16.5)/15.5; // roughly -1 toughest to +1 easiest
+    const factor=1+(centered*0.08);  // max about +/-8%
+    return {factor,opponent:opp,rank,metric};
+  };
+
+  const injuryAdjustment=(p)=>{
+    const s=String(p?.injury_status||p?.status||"").toLowerCase();
+    if(["out","ir","inactive","pup","suspended","reserve","nfi"].some(x=>s===x||s.includes(x)))return 0;
+    if(s.includes("doubtful"))return 0.25;
+    if(s.includes("questionable"))return 0.90;
+    if(s.includes("gtd")||s.includes("game-time"))return 0.85;
+    if(s.includes("probable"))return 0.98;
+    return 1;
+  };
+
+  const projectionConfidence=(p)=>{
+    const pr=projectionFor(p);
+    if(!pr)return "LOW";
+    const usage=Number(pr.passingAttempts||0)+Number(pr.rushingAttempts||0)+Number(pr.receivingTargets||0);
+    const injury=injuryAdjustment(p);
+    if(injury===0)return "LOW";
+    if(usage>=25&&injury>=0.98)return "HIGH";
+    if(usage>=10&&injury>=0.85)return "MEDIUM";
+    return "LOW";
+  };
+
+  const projectionRange=(p)=>{
+    const expected=projectedFantasyPoints(p);
+    if(expected===null)return {floor:null,expected:null,ceiling:null};
+    const pr=projectionFor(p);
+    const volume=Number(pr?.passingAttempts||0)+Number(pr?.rushingAttempts||0)+Number(pr?.receivingTargets||0);
+    const spread=volume>=25?0.24:volume>=10?0.30:0.38;
+    return {
+      floor:Math.max(0,Math.round(expected*(1-spread)*10)/10),
+      expected,
+      ceiling:Math.round(expected*(1+spread)*10)/10
+    };
+  };
+
+  const projectedFantasyPoints=(p)=>{
+    const base=rawFantasyPoints(p);
+    if(base===null)return null;
+
+    const matchup=matchupAdjustment(p);
+    const injury=injuryAdjustment(p);
+    let value=base*matchup.factor*injury;
+
+    // Sanity caps prevent malformed raw feeds from creating absurd fantasy totals.
+    const caps={QB:45,RB:38,WR:38,TE:32,K:25,DEF:30};
+    const cap=caps[p?.position]||40;
+    value=Math.max(0,Math.min(cap,value));
+
+    return Math.round(value*10)/10;
   };
 
   const score=(p)=>{
@@ -340,9 +453,9 @@ export default function Dashboard(){
   const startWinner=A&&B?(score(A)>=score(B)?A:B):null;
   const startLoser=A&&B?(startWinner===A?B:A):null;
 
-  const tradePool=useMemo(()=>Object.values(players).filter(p=>["QB","RB","WR","TE"].includes(p.position)&&p.active!==false).sort((a,b)=>tradeValue(b)-tradeValue(a)).slice(0,450),[players,format.label]);
+  const tradePool=useMemo(()=>Object.values(players).filter(p=>["QB","RB","WR","TE"].includes(p.position)&&p.active===true).sort((a,b)=>tradeValue(b)-tradeValue(a)),[players,format.label]);
   const packageValue=(ids)=>{
-    const vals=ids.slice(0,3).map(x=>tradeValue(find(x))).filter(Boolean).sort((a,b)=>b-a);
+    const vals=ids.slice(0,6).map(x=>tradeValue(find(x))).filter(Boolean).sort((a,b)=>b-a);
     let v=vals.reduce((a,b)=>a+b,0)-Math.max(0,vals.length-1)*3;
     if(vals[0]>=90)v+=5;return Math.round(v);
   };
@@ -353,6 +466,48 @@ export default function Dashboard(){
     return xs[0]||[...pool].sort((a,b)=>score(a)-score(b))[0];
   };
   const waiverRows=trending.map(t=>({t,p:players[t.player_id]})).filter(x=>x.p&&(["ALL",x.p.position].includes(pos))).slice(0,14);
+
+  const tradePlayers=(ids)=>ids.map(find).filter(Boolean);
+
+  const packagePositions=(ids)=>{
+    const counts={};
+    for(const p of tradePlayers(ids))counts[p.position]=(counts[p.position]||0)+1;
+    return counts;
+  };
+
+  const tradeTeamAnalysis=()=>{
+    const outgoing=tradePlayers(give);
+    const incoming=tradePlayers(get);
+    if(!outgoing.length||!incoming.length)return null;
+
+    const incomingBest=[...incoming].sort((a,b)=>tradeValue(b)-tradeValue(a))[0];
+    const outgoingBest=[...outgoing].sort((a,b)=>tradeValue(b)-tradeValue(a))[0];
+    const incomingPos=packagePositions(get);
+    const outgoingPos=packagePositions(give);
+
+    const good=[];
+    const bad=[];
+
+    if(rv>gv)good.push(`You gain ${rv-gv} points of adjusted FTW package value.`);
+    else bad.push(`You give up ${gv-rv} more adjusted FTW value than you receive.`);
+
+    if(incomingPos[biggestNeed])good.push(`The return adds help at ${biggestNeed}, your weakest current position group.`);
+    if(outgoingPos[biggestNeed]&&!incomingPos[biggestNeed])bad.push(`You lose depth at ${biggestNeed}, currently your weakest position group.`);
+
+    if(incomingBest&&outgoingBest&&tradeValue(incomingBest)>tradeValue(outgoingBest)){
+      good.push(`${name(incomingBest)} becomes the best individual asset changing hands.`);
+    }else if(incomingBest&&outgoingBest&&tradeValue(outgoingBest)>tradeValue(incomingBest)){
+      bad.push(`${name(outgoingBest)} is the best individual asset in the deal, so you are giving up the strongest piece.`);
+    }
+
+    if(incoming.length<outgoing.length)good.push("You consolidate roster spots, which can create room for a waiver add.");
+    if(incoming.length>outgoing.length)bad.push("You take on more roster spots, which may force a drop and reduce the package's practical value.");
+
+    return {
+      good:good.slice(0,3),
+      bad:bad.slice(0,3)
+    };
+  };
 
   const gmAnswer=(q)=>{
     const sorted=[...pool].sort((a,b)=>score(b)-score(a)), weak=[...sorted].reverse()[0];
@@ -402,27 +557,91 @@ export default function Dashboard(){
   };
 
   const modalProjection=(row)=>{
-    const rec=Number(league?.scoring_settings?.rec ?? 0.5);
     const p=row?.projection;
     if(!p)return null;
-    const value=rec>=1?p.ppr:rec>=0.5?p.halfPpr:p.standard;
-    return Number.isFinite(Number(value))?Number(value):null;
+
+    const fields=[
+      p.passingYards,p.passingTouchdowns,p.passingInterceptions,
+      p.rushingYards,p.rushingTouchdowns,p.receptions,
+      p.receivingYards,p.receivingTouchdowns
+    ];
+    if(!fields.some(v=>Number(v)>0))return null;
+
+    let pts=0;
+    pts+=Number(p.passingYards||0)*scoringValue("pass_yd",0.04);
+    pts+=Number(p.passingTouchdowns||0)*scoringValue("pass_td",4);
+    pts+=Number(p.passingInterceptions||0)*scoringValue("pass_int",-2);
+    pts+=Number(p.rushingYards||0)*scoringValue("rush_yd",0.1);
+    pts+=Number(p.rushingTouchdowns||0)*scoringValue("rush_td",6);
+    pts+=Number(p.receptions||0)*scoringValue("rec",0);
+    pts+=Number(p.receivingYards||0)*scoringValue("rec_yd",0.1);
+    pts+=Number(p.receivingTouchdowns||0)*scoringValue("rec_td",6);
+    pts+=Number(p.fumblesLost||0)*scoringValue("fum_lost",-2);
+    pts+=Number(p.passingTwoPointConversions||0)*scoringValue("pass_2pt",2);
+    pts+=Number(p.rushingTwoPointConversions||0)*scoringValue("rush_2pt",2);
+    pts+=Number(p.receivingTwoPointConversions||0)*scoringValue("rec_2pt",2);
+
+    if(selectedPlayer?.position==="TE"){
+      pts+=Number(p.receptions||0)*scoringValue("bonus_rec_te",0);
+    }
+
+    const opp=String(row?.matchup?.opponent||"").toUpperCase();
+    const ranks=defenseRankings?.[opp]||null;
+    let rank=null;
+    if(ranks){
+      rank=["QB","WR","TE"].includes(selectedPlayer?.position)
+        ? Number(ranks.passRank)
+        : selectedPlayer?.position==="RB"
+          ? Number(ranks.rushRank)
+          : Number(ranks.overallRank);
+    }
+
+    let matchupFactor=1;
+    if(Number.isFinite(rank)){
+      const centered=(rank-16.5)/15.5;
+      matchupFactor=1+(centered*0.08);
+    }
+
+    const injury=injuryAdjustment(selectedPlayer);
+    const caps={QB:45,RB:38,WR:38,TE:32,K:25,DEF:30};
+    const cap=caps[selectedPlayer?.position]||40;
+    const value=Math.max(0,Math.min(cap,pts*matchupFactor*injury));
+    return Math.round(value*10)/10;
   };
 
   const futureProjectionRows=()=>{
-    const rows=(playerInsight?.future||[]).map(row=>({
-      ...row,
-      points:modalProjection(row)
-    }));
-    const vals=rows.map(x=>x.points).filter(Number.isFinite);
-    const avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
-    return rows.map(row=>{
-      let difficulty="TBD";
-      if(Number.isFinite(row.points)&&Number.isFinite(avg)&&avg>0){
-        const ratio=row.points/avg;
-        difficulty=ratio>=1.10?"EASY":ratio<=0.90?"HARD":"MEDIUM";
+    const position=selectedPlayer?.position||"";
+    return (playerInsight?.future||[]).map(row=>{
+      const points=modalProjection(row);
+      const opp=String(row?.matchup?.opponent||"").toUpperCase();
+      const ranks=defenseRankings?.[opp]||null;
+
+      let rank=null;
+      let stat=null;
+      let metric="OVERALL";
+      if(ranks){
+        if(["QB","WR","TE"].includes(position)){
+          rank=ranks.passRank;
+          stat=ranks.passYardsPerGame;
+          metric="PASS";
+        }else if(position==="RB"){
+          rank=ranks.rushRank;
+          stat=ranks.rushYardsPerGame;
+          metric="RUSH";
+        }else{
+          rank=ranks.overallRank;
+          stat=ranks.pointsAllowedPerGame;
+          metric="OVERALL";
+        }
       }
-      return {...row,difficulty};
+
+      // Rank 1 = toughest 2025 defense. Rank 32 = most favorable.
+      let difficulty="TBD";
+      if(Number.isFinite(Number(rank))){
+        difficulty=Number(rank)<=10?"HARD":Number(rank)>=23?"EASY":"MEDIUM";
+      }
+
+      return {...row,points,difficulty,defenseRank:rank,defenseMetric:metric,defenseStat:stat};
     });
   };
 
@@ -450,9 +669,14 @@ export default function Dashboard(){
     return {call:"SIT / BENCH",reason:Number.isFinite(pts)?`${name(p)} projects for ${pts.toFixed(1)} this week and currently falls behind your optimized starters.`:`FTW does not have a reliable weekly projection for ${name(p)} right now, so the safer call is to compare them against your other available starters.`};
   };
 
-  const multiSelect=(e,setter)=>{
-    const vals=[...e.target.selectedOptions].map(o=>o.value).slice(0,3);
-    setter(vals);
+  const addTradePlayer=(playerId,setter,current)=>{
+    const pid=String(playerId||"");
+    if(!pid||current.includes(pid)||current.length>=6)return;
+    setter([...current,pid]);
+  };
+
+  const removeTradePlayer=(playerId,setter,current)=>{
+    setter(current.filter(x=>String(x)!==String(playerId)));
   };
 
   return <main>
@@ -477,11 +701,11 @@ export default function Dashboard(){
       <section className="providerBar glass">
         <div>
           <small>PROJECTION ENGINE</small>
-          <b>{projectionFeed.configured ? "SLEEPER PROJECTIONS LIVE" : "SLEEPER PROJECTIONS UNAVAILABLE"}</b>
+          <b>{projectionFeed.configured ? "FTW PROJECTION ENGINE LIVE" : "FTW PROJECTION INPUT UNAVAILABLE"}</b>
           <span>{projectionFeed.configured
             ? `${projectionFeed.projections.length} weekly player projections loaded${projectionFeed.retrievedAt?` • refreshed ${new Date(projectionFeed.retrievedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`:""}`
-            : (projectionFeed.detail ? `Projection feed error: ${projectionFeed.detail}` : "No API key required. FTW is pulling the current week projection feed from Sleeper.")}</span>
-          {projectionFeed.configured&&<span className="providerAttribution">Sleeper weekly projection feed • no API key</span>}
+            : (projectionFeed.detail ? `Projection feed error: ${projectionFeed.detail}` : "No API key required. FTW calculates weekly points from projected stat lines, your league scoring, injuries and 2025 defensive matchup strength.")}</span>
+          {projectionFeed.configured&&<span className="providerAttribution">FTW Projection Engine • Sleeper stat-line input • 2025 defense adjustment</span>}
         </div>
         <div className={projectionFeed.configured?"providerDot on":"providerDot"} />
       </section>
@@ -508,7 +732,7 @@ export default function Dashboard(){
 
       {tab==="optimize"&&<section>
         <Head kicker="LINEUP ENGINE" title="Optimize your Lineup"/>
-        <div className="explainer glass"><b>How FTW optimizes:</b> Weekly projections are the primary signal. Players listed Out, IR, Inactive, PUP, Suspended or Doubtful are removed from the suggested starters. Questionable and game-time-decision players receive a risk penalty, then FTW fills only legal lineup slots with the highest risk-adjusted weekly outlook.</div>
+        <div className="explainer glass"><b>How FTW optimizes:</b> FTW calculates each weekly projection from the player’s projected stat line using your exact league scoring, then applies a modest 2025 opponent-defense adjustment and current injury risk. Players listed Out, IR, Inactive, PUP, Suspended or Doubtful are removed before FTW fills the highest-value legal lineup.</div>
         <div className="lineup">{optimal.starters.map((x,i)=><button type="button" className="slot glass playerCardButton" key={`${x.slot}-${i}`} onClick={()=>x.p&&openPlayer(x.p)}><span>{x.slot}</span>{x.p?<div className="slotPlayer"><PlayerAvatar p={x.p} size="sm"/><b>{name(x.p)}</b></div>:<b>EMPTY</b>}<em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em>{x.p&&lineupRiskLabel(x.p)&&<small className="lineupRisk">{lineupRiskLabel(x.p)}</small>}</button>)}</div>
         <div className="result glass"><h3>BENCH CHECK</h3><p>{optimal.bench.find(p=>!isUnavailable(p))?`${name(optimal.bench.find(p=>!isUnavailable(p)))} is your highest-rated available bench option based on this week's risk-adjusted outlook. Recheck late injury news before kickoff.`:"No healthy bench alternative is currently available."}</p></div>
       </section>}
@@ -534,31 +758,64 @@ export default function Dashboard(){
             startWinner.injury_status ? `Risk: ${startWinner.injury_status} injury designation should be checked again before lineup lock` : "No current Sleeper injury designation is shown",
             `The recommendation is tuned to your ${format.label} scoring format`
           ]}/>
-          <div className="accuracyNote"><b>Data source:</b> {projectionFor(startWinner) ? "weekly projection from Sleeper + your league settings and live player metadata." : "Sleeper live metadata + FTW fallback model because the weekly projection feed is currently unavailable."}</div>
+          <div className="accuracyNote"><b>Data source:</b> {projectionFor(startWinner) ? "FTW-calculated weekly projection using projected stat lines, your league scoring, injury status and opponent defensive strength." : "Sleeper live metadata + FTW fallback model because the weekly projection feed is currently unavailable."}</div>
         </div>}
       </section>}
 
       {tab==="trade"&&<section>
         <Head kicker="MULTI-PLAYER DEALS" title="Trade Analyzer"/>
-        <div className="explainer glass"><b>How FTW decides:</b> It evaluates each side using league-format scarcity, roster construction, package size, elite-player consolidation, current player status and your biggest positional need.</div>
-        <p className="helper">Select up to three players on each side. FTW applies league-format scarcity and an elite-player consolidation premium.</p>
-        <div className="compare">
-          <TradeSide label="YOU GIVE" ids={give} onChange={e=>multiSelect(e,setGive)} pool={tradePool.length?tradePool:DEMO} value={gv} valueFn={tradeValue} onPlayer={openPlayer}/>
+        <div className="explainer glass"><b>How FTW decides:</b> Search active NFL players, build packages of up to six players per side, then compare league-format scarcity, weekly value, positional need, roster consolidation and current player status.</div>
+        <p className="helper">Search for a player and hit <b>＋</b> to add them. Only players Sleeper currently marks active are shown.</p>
+        <div className="compare tradeCompare">
+          <TradeSide
+            label="YOU GIVE"
+            ids={give}
+            addPlayer={pid=>addTradePlayer(pid,setGive,give)}
+            removePlayer={pid=>removeTradePlayer(pid,setGive,give)}
+            pool={tradePool.length?tradePool:DEMO.filter(p=>p.active!==false)}
+            value={gv}
+            valueFn={tradeValue}
+            onPlayer={openPlayer}
+          />
           <div className="vs">⇄</div>
-          <TradeSide label="YOU GET" ids={get} onChange={e=>multiSelect(e,setGet)} pool={tradePool.length?tradePool:DEMO} value={rv} valueFn={tradeValue} onPlayer={openPlayer}/>
+          <TradeSide
+            label="YOU GET"
+            ids={get}
+            addPlayer={pid=>addTradePlayer(pid,setGet,get)}
+            removePlayer={pid=>removeTradePlayer(pid,setGet,get)}
+            pool={tradePool.length?tradePool:DEMO.filter(p=>p.active!==false)}
+            value={rv}
+            valueFn={tradeValue}
+            onPlayer={openPlayer}
+          />
         </div>
-        {(give.length>0&&get.length>0)&&<div className="result glass">
-          <h3>{winPct>=57?"ACCEPT":winPct>=46?"FAIR TRADE":"DECLINE"} • YOU {winPct}% / THEM {100-winPct}%</h3>
-          <p>{rv>=gv?"The incoming package has the stronger adjusted FTW value.":"The outgoing package has the stronger adjusted FTW value."}</p>
-          <Why title="Why FTW grades the trade this way" items={[
-            `Adjusted package value: ${rv} received vs ${gv} given`,
-            `League format: ${format.label}; scarcity changes in Superflex and TE-premium formats`,
-            `Best player in the deal: ${name([...give.map(find),...get.map(find)].filter(Boolean).sort((a,b)=>tradeValue(b)-tradeValue(a))[0])}`,
-            "FTW applies an elite-player consolidation premium and a small multi-roster-spot penalty",
-            `Your current weakest position group is ${biggestNeed}, so deals that improve that group help your specific roster more`
-          ]}/>
-          <div className="accuracyNote"><b>Important:</b> trade percentages are FTW model estimates, not betting odds or official market probabilities. Live league settings, roster data and current player metadata inform the analysis.</div>
-        </div>}
+        {(give.length>0&&get.length>0)&&(()=>{
+          const tradeNotes=tradeTeamAnalysis();
+          return <div className="result glass">
+            <h3>{winPct>=57?"ACCEPT":winPct>=46?"FAIR TRADE":"DECLINE"} • YOU {winPct}% / THEM {100-winPct}%</h3>
+            <p>{rv>=gv?"The incoming package has the stronger adjusted FTW value.":"The outgoing package has the stronger adjusted FTW value."}</p>
+
+            <div className="tradeProsCons">
+              <div className="tradeGood">
+                <small>WHY THIS IS GOOD FOR YOUR TEAM</small>
+                <ul>{tradeNotes?.good?.length?tradeNotes.good.map((x,i)=><li key={i}>{x}</li>):<li>No major roster-specific advantage detected.</li>}</ul>
+              </div>
+              <div className="tradeBad">
+                <small>WHY THIS COULD HURT YOUR TEAM</small>
+                <ul>{tradeNotes?.bad?.length?tradeNotes.bad.map((x,i)=><li key={i}>{x}</li>):<li>No major roster-specific downside detected.</li>}</ul>
+              </div>
+            </div>
+
+            <Why title="Why FTW grades the trade this way" items={[
+              `Adjusted package value: ${rv} received vs ${gv} given`,
+              `League format: ${format.label}; scarcity changes in Superflex and TE-premium formats`,
+              `Best player in the deal: ${name([...give.map(find),...get.map(find)].filter(Boolean).sort((a,b)=>tradeValue(b)-tradeValue(a))[0])}`,
+              "FTW applies an elite-player consolidation premium and a multi-roster-spot penalty",
+              `Your current weakest position group is ${biggestNeed}, so deals that improve that group help your specific roster more`
+            ]}/>
+            <div className="accuracyNote"><b>Important:</b> trade percentages are FTW model estimates, not betting odds. Current league settings, roster construction, player status and weekly projection inputs inform the analysis.</div>
+          </div>
+        })()}
       </section>}
 
       {tab==="waivers"&&<section>
@@ -618,7 +875,8 @@ export default function Dashboard(){
                 <h2>{name(selectedPlayer)}</h2>
                 <div className="playerBadges">
                   <span className={String(injury).toLowerCase()==="active"?"badge good":"badge caution"}>{injury}</span>
-                  {Number.isFinite(currentPts)&&<span className="badge projectionBadge">{currentPts.toFixed(1)} PROJECTED PTS</span>}
+                  {Number.isFinite(currentPts)&&<span className="badge projectionBadge">{currentPts.toFixed(1)} FTW PROJ</span>}
+                  {selectedPlayer&&<span className="badge">{projectionConfidence(selectedPlayer)} CONFIDENCE</span>}
                 </div>
               </div>
             </div>
@@ -632,16 +890,34 @@ export default function Dashboard(){
                 <div><small>FTW WEEKLY ADVICE</small><p>{advice.reason}</p></div>
               </div>
 
+              {selectedPlayer&&(()=>{const r=projectionRange(selectedPlayer);return Number.isFinite(r.expected)?<div className="projectionRange">
+                <div><small>FLOOR</small><b>{r.floor.toFixed(1)}</b></div>
+                <div><small>EXPECTED</small><b>{r.expected.toFixed(1)}</b></div>
+                <div><small>CEILING</small><b>{r.ceiling.toFixed(1)}</b></div>
+                <div><small>CONFIDENCE</small><b>{projectionConfidence(selectedPlayer)}</b></div>
+              </div>:null})()}
+
               <div className="modalSection">
-                <div className="modalSectionHead"><div><small>REST OF SEASON</small><h3>Schedule + projections</h3></div><span>Difficulty is based on this player's projected scoring versus their own remaining-week average.</span></div>
+                <div className="modalSectionHead"><div><small>REST OF SEASON</small><h3>Schedule + projections</h3></div><span>Difficulty uses the opponent’s 2025 defensive results. Rank #1 is toughest; #32 is most favorable. QB/WR/TE use pass defense and RB uses rush defense.</span></div>
                 <div className="futureGrid">
                   {rows.length?rows.map(row=><div className="futureGame" key={row.week}>
                     <div><b>W{row.week}</b><small>{row.matchup?.homeAway==="home"?"vs":"@"} {row.matchup?.opponent||"TBD"}</small></div>
                     <strong>{Number.isFinite(row.points)?row.points.toFixed(1):"—"}</strong>
                     <span className={`difficulty ${String(row.difficulty).toLowerCase()}`}>{row.difficulty}</span>
+                    {Number.isFinite(Number(row.defenseRank))&&<small className="defenseRank">2025 {row.defenseMetric} DEF #{row.defenseRank}{Number.isFinite(Number(row.defenseStat))?` • ${Number(row.defenseStat).toFixed(1)} allowed/g`:""}</small>}
                   </div>):<p className="muted">Future weekly projections are not available from the current projection feed.</p>}
                 </div>
               </div>
+
+              {selectedPlayer&&projectionFor(selectedPlayer)&&<div className="modalSection workloadSection">
+                <div className="modalSectionHead"><div><small>PROJECTED OPPORTUNITY</small><h3>Expected workload</h3></div></div>
+                <div className="workloadGrid">
+                  {Number(projectionFor(selectedPlayer)?.passingAttempts||0)>0&&<div><small>PASS ATT</small><b>{Number(projectionFor(selectedPlayer).passingAttempts).toFixed(1)}</b></div>}
+                  {Number(projectionFor(selectedPlayer)?.rushingAttempts||0)>0&&<div><small>CARRIES</small><b>{Number(projectionFor(selectedPlayer).rushingAttempts).toFixed(1)}</b></div>}
+                  {Number(projectionFor(selectedPlayer)?.receivingTargets||0)>0&&<div><small>TARGETS</small><b>{Number(projectionFor(selectedPlayer).receivingTargets).toFixed(1)}</b></div>}
+                  {Number(projectionFor(selectedPlayer)?.receptions||0)>0&&<div><small>RECEPTIONS</small><b>{Number(projectionFor(selectedPlayer).receptions).toFixed(1)}</b></div>}
+                </div>
+              </div>}
 
               <div className="modalColumns">
                 <div className="modalSection">
@@ -676,7 +952,7 @@ export default function Dashboard(){
       <section className="ticker glass"><b>FTW WIRE</b><span>{trending.slice(0,8).map(t=>players[t.player_id]).filter(Boolean).map(name).join(" • ")||"Connecting to live player movement…"}</span></section>
     </div>
 
-    <footer><b>FTW FANTASY</b><span>Fantasy decisions without the clutter.</span><small>League/roster/player movement uses Sleeper. Weekly projections use Sleeper when its projection feed is available. FTW combines those inputs into recommendations; no projection guarantees an outcome.</small></footer>
+    <footer><b>FTW FANTASY</b><span>Fantasy decisions without the clutter.</span><small>League/roster/player movement uses Sleeper. FTW calculates weekly projections from underlying projected stat lines when the feed is available. FTW combines those inputs into recommendations; no projection guarantees an outcome.</small></footer>
   </main>
 }
 
@@ -713,26 +989,56 @@ function Why({title,items}){
   </div>;
 }
 
-function TradeSide({label,ids,onChange,pool,value,valueFn,onPlayer}){
+function TradeSide({label,ids,addPlayer,removePlayer,pool,value,valueFn,onPlayer}){
+  const [query,setQuery]=useState("");
+  const normalized=query.trim().toLowerCase();
+  const matches=normalized
+    ? pool.filter(p=>name(p).toLowerCase().includes(normalized)&&!ids.includes(id(p))).slice(0,10)
+    : [];
+
   return <div className="tradeSide glass">
-    <label>{label}</label>
-    <select multiple size={10} value={ids} onChange={onChange}>
-      {pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} • {p.position} • {valueFn(p)}</option>)}
-    </select>
-    <div className="tradeSelected">
+    <div className="tradeSideHead">
+      <label>{label}</label>
+      <span>{ids.length}/6</span>
+    </div>
+
+    <div className="tradeSearch">
+      <input
+        value={query}
+        onChange={e=>setQuery(e.target.value)}
+        placeholder="Search active player…"
+        aria-label={`${label} player search`}
+      />
+      {normalized&&<div className="tradeSearchResults">
+        {matches.length?matches.map(p=><div className="tradeSearchRow" key={id(p)}>
+          <button type="button" className="tradeSearchPlayer" onClick={()=>onPlayer?.(p)}>
+            <PlayerAvatar p={p} size="xs"/>
+            <span><b>{name(p)}</b><small>{p.position} • {p.team||"FA"}</small></span>
+          </button>
+          <button
+            type="button"
+            className="tradeAdd"
+            disabled={ids.length>=6}
+            onClick={()=>{addPlayer(id(p));setQuery("");}}
+            aria-label={`Add ${name(p)}`}
+          >＋</button>
+        </div>):<div className="tradeNoResults">No active players found.</div>}
+      </div>}
+    </div>
+
+    <div className="tradeSelected tradeSelectedLarge">
       {ids.map(pid=>{
         const p=pool.find(x=>id(x)===String(pid));
-        return p?<button
-          type="button"
-          className="tradeSelectedPlayer"
-          key={pid}
-          onClick={()=>onPlayer?.(p)}
-        >
-          <PlayerAvatar p={p} size="xs"/>
-          <span>{name(p)}</span>
-        </button>:null;
+        return p?<div className="tradeSelectedPlayer" key={pid}>
+          <button type="button" className="tradeChipPlayer" onClick={()=>onPlayer?.(p)}>
+            <PlayerAvatar p={p} size="xs"/>
+            <span>{name(p)}</span>
+          </button>
+          <button type="button" className="tradeRemove" onClick={()=>removePlayer(pid)} aria-label={`Remove ${name(p)}`}>×</button>
+        </div>:null;
       })}
     </div>
+
     <div className="package">
       <span>PACKAGE</span>
       <b>{value}</b>

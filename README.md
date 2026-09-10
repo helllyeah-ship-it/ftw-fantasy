@@ -149,3 +149,34 @@ Future weekly projections come from the same Sleeper projection adapter used els
 - Weekly projected points are the primary lineup signal; depth chart and player movement are minor tie-breakers.
 - The optimizer fills mandatory position slots before flexible slots to reduce bad roster assignments.
 - Player photos now try ESPN first and automatically fall back to Sleeper's player headshot CDN before showing initials.
+
+
+## Trade Analyzer + 2025 schedule-strength upgrade
+- Trade player selection now uses a search bar.
+- Only players Sleeper marks active are included.
+- Up to six players can be added to each side with a + control and removed with ×.
+- Trade results include short "good for your team" and "could hurt your team" sections.
+- Player schedule difficulty now uses 2025 opponent defensive statistics rather than comparing projections to the player's own average.
+- QB/WR/TE matchups use 2025 pass-yards-allowed rank.
+- RB matchups use 2025 rush-yards-allowed rank.
+- Other positions use 2025 points-allowed rank.
+- Rank #1 is the toughest 2025 defense and #32 the most favorable.
+- Tiers: HARD = ranks 1–10, MEDIUM = 11–22, EASY = 23–32.
+- Defensive statistics are requested server-side from ESPN's 2025 regular-season team statistics endpoints and ranked by FTW.
+
+
+## FTW native weekly projection engine
+The visible fantasy-point projection is no longer taken directly from Sleeper's precomputed `pts_ppr`, `pts_half_ppr`, or `pts_std` field.
+
+FTW now:
+1. reads the projected player stat line (passing, rushing, receiving, turnovers and two-point conversions),
+2. calculates fantasy points using the connected Sleeper league's scoring settings,
+3. applies a modest matchup adjustment using the opponent's 2025 defensive rank,
+4. applies current injury/availability risk,
+5. caps malformed outlier results with position-based sanity limits.
+
+2025 opponent-defense adjustment is intentionally small (about +/-8% at the extremes) so projected workload and player talent remain the dominant inputs.
+
+The player profile also displays a floor, expected projection, ceiling, confidence level and projected opportunity when the underlying inputs are available.
+
+Important: FTW projections are model estimates. They are not official NFL projections or guarantees of fantasy performance.

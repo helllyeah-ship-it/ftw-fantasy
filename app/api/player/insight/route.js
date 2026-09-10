@@ -147,12 +147,21 @@ export async function GET(req) {
           return {
             week,
             projection: {
-              standard: p.projectedPointsStd,
-              halfPpr: p.projectedPointsHalf,
-              ppr: p.projectedPointsPpr,
               passingAttempts: p.passingAttempts,
+              passingYards: p.passingYards,
+              passingTouchdowns: p.passingTouchdowns,
+              passingInterceptions: p.passingInterceptions,
               rushingAttempts: p.rushingAttempts,
-              targets: p.receivingTargets
+              rushingYards: p.rushingYards,
+              rushingTouchdowns: p.rushingTouchdowns,
+              targets: p.receivingTargets,
+              receptions: p.receptions,
+              receivingYards: p.receivingYards,
+              receivingTouchdowns: p.receivingTouchdowns,
+              fumblesLost: p.fumblesLost,
+              passingTwoPointConversions: p.passingTwoPointConversions,
+              rushingTwoPointConversions: p.rushingTwoPointConversions,
+              receivingTwoPointConversions: p.receivingTwoPointConversions
             }
           };
         } catch {

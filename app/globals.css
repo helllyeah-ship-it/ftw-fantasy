@@ -430,3 +430,188 @@ button,input,select{font:inherit}.topbar{height:66px;position:sticky;top:0;z-ind
   font-weight:1000;
   letter-spacing:.6px;
 }
+
+
+/* Trade analyzer search + six-player packages */
+.tradeCompare{align-items:flex-start}
+.tradeSide{min-width:0}
+.tradeSideHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:10px;
+}
+.tradeSideHead>span{
+  font-size:9px;
+  color:var(--cyan);
+  font-weight:900;
+}
+.tradeSearch{position:relative}
+.tradeSearch input{
+  width:100%;
+  box-sizing:border-box;
+  padding:12px 13px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.11);
+  background:#0b0212;
+  color:#fff;
+  outline:none;
+}
+.tradeSearch input:focus{border-color:rgba(38,247,238,.45)}
+.tradeSearchResults{
+  position:absolute;
+  z-index:50;
+  top:calc(100% + 6px);
+  left:0;
+  right:0;
+  max-height:310px;
+  overflow:auto;
+  padding:6px;
+  border:1px solid rgba(38,247,238,.25);
+  border-radius:12px;
+  background:#100319;
+  box-shadow:0 18px 40px rgba(0,0,0,.45);
+}
+.tradeSearchRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:6px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.tradeSearchRow:last-child{border-bottom:0}
+.tradeSearchPlayer{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:1;
+  min-width:0;
+  text-align:left;
+  border:0;
+  background:transparent;
+  color:#fff;
+}
+.tradeSearchPlayer>span{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+.tradeSearchPlayer b{font-size:11px}
+.tradeSearchPlayer small{font-size:8px;color:var(--muted)}
+.tradeAdd{
+  width:32px;
+  height:32px;
+  border-radius:50%;
+  border:1px solid rgba(38,247,238,.34);
+  background:rgba(38,247,238,.08);
+  color:var(--cyan);
+  font-size:18px;
+  font-weight:900;
+}
+.tradeAdd:disabled{opacity:.3}
+.tradeNoResults{padding:12px;color:var(--muted);font-size:10px}
+.tradeSelectedLarge{margin-top:12px}
+.tradeSelectedPlayer{
+  padding:4px 5px 4px 4px!important;
+}
+.tradeChipPlayer{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  border:0;
+  background:transparent;
+  color:#fff;
+  padding:0;
+}
+.tradeRemove{
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  border:0;
+  background:rgba(255,43,214,.10);
+  color:var(--pink);
+  font-weight:900;
+}
+.tradeProsCons{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin:14px 0;
+}
+.tradeGood,.tradeBad{
+  padding:13px;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:12px;
+  background:rgba(255,255,255,.018);
+}
+.tradeGood small{color:var(--green)}
+.tradeBad small{color:var(--pink)}
+.tradeGood small,.tradeBad small{
+  font-size:9px;
+  font-weight:1000;
+  letter-spacing:.7px;
+}
+.tradeGood ul,.tradeBad ul{
+  margin:9px 0 0;
+  padding-left:17px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.5;
+}
+.defenseRank{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:7px!important;
+  line-height:1.25;
+}
+
+@media(max-width:760px){
+  .tradeProsCons{grid-template-columns:1fr}
+}
+
+
+/* FTW native projection engine */
+.projectionRange{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  margin-top:14px;
+}
+.projectionRange>div,
+.workloadGrid>div{
+  padding:12px;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:11px;
+  background:#0b0212;
+}
+.projectionRange small,
+.workloadGrid small{
+  display:block;
+  color:var(--muted);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.7px;
+}
+.projectionRange b{
+  display:block;
+  margin-top:5px;
+  color:var(--cyan);
+  font-size:18px;
+}
+.workloadGrid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+}
+.workloadGrid b{
+  display:block;
+  margin-top:5px;
+  color:#fff;
+  font-size:16px;
+}
+@media(max-width:760px){
+  .projectionRange,
+  .workloadGrid{grid-template-columns:repeat(2,1fr)}
+}
