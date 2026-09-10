@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 const DEMO = [
-  ["d1","Jalen Hurts","QB","PHI"],["d2","Bijan Robinson","RB","ATL"],
-  ["d3","De'Von Achane","RB","MIA"],["d4","Garrett Wilson","WR","NYJ"],
-  ["d5","Zay Flowers","WR","BAL"],["d6","Sam LaPorta","TE","DET"],
-  ["d7","Emeka Egbuka","WR","TB"],["d8","Parker Washington","WR","JAX"],
-  ["d9","TreVeyon Henderson","RB","NE"],["d10","Tyler Warren","TE","IND"]
-].map(([player_id,full_name,position,team])=>({player_id,full_name,position,team,active:true}));
+  ["d1","Jalen Hurts","QB","PHI","4040715"],["d2","Bijan Robinson","RB","ATL","4430807"],
+  ["d3","De'Von Achane","RB","MIA","4429160"],["d4","Garrett Wilson","WR","NYJ","4361407"],
+  ["d5","Zay Flowers","WR","BAL","4429615"],["d6","Sam LaPorta","TE","DET","4430027"],
+  ["d7","Emeka Egbuka","WR","TB","4567750"],["d8","Parker Washington","WR","JAX","4430878"],
+  ["d9","TreVeyon Henderson","RB","NE","4432710"],["d10","Tyler Warren","TE","IND","4431459"]
+].map(([player_id,full_name,position,team,espn_id])=>({player_id,full_name,position,team,espn_id,active:true}));
 
 const NAV = [
   ["team","⚡","Team"],["optimize","◎","Optimize"],["startsit","✓","Start/Sit"],
@@ -26,9 +26,9 @@ function name(p){return p?.full_name || [p?.first_name,p?.last_name].filter(Bool
 function id(p){return String(p?.player_id || "")}
 
 function PlayerAvatar({p,size="md"}){
-  const pid=id(p);
+  const espnId = String(p?.espn_id || p?.espnId || p?.metadata?.espn_id || "");
   const initials=name(p).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
-  const src=pid ? `https://sleepercdn.com/content/nfl/players/thumb/${encodeURIComponent(pid)}.jpg` : "";
+  const src=espnId ? `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(espnId)}.png` : "";
   return <span className={`playerAvatar ${size}`} aria-hidden="true">
     <span className="avatarFallback">{initials||"?"}</span>
     {src&&<img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e=>{e.currentTarget.style.display="none"}}/>}

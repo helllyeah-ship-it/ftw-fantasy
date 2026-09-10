@@ -117,3 +117,12 @@ Player avatars now use Sleeper's NFL player headshot CDN, keyed directly by Slee
 `https://sleepercdn.com/content/nfl/players/thumb/<player_id>.jpg`
 
 Headshots appear beside players in the roster, optimized lineup, Start/Sit focus cards/results, waiver cards, and selected trade-player chips. If a headshot is unavailable, FTW automatically falls back to the player's initials so the layout never breaks.
+
+
+## ESPN player headshots
+Player avatars now use ESPN's NFL headshot CDN instead of Sleeper's image host.
+
+FTW reads the `espn_id` included in Sleeper player metadata and builds the image URL:
+`https://a.espncdn.com/i/headshots/nfl/players/full/<espn_id>.png`
+
+If ESPN has no image for a player, or the player's Sleeper record does not contain an ESPN ID, the UI falls back to the player's initials without breaking the layout.
