@@ -233,3 +233,22 @@ Player profiles now expose position-specific weekly projected production:
 - RB: carries, rushing yards, targets, receptions, receiving yards, rushing touchdowns, receiving touchdowns and total touchdowns.
 - QB: pass attempts, passing yards and passing touchdowns when available.
 Fractional touchdown values are expected-value projections, not a claim that a player can score a fraction of a touchdown in an actual game.
+
+
+## Vegas-adjusted projection engine
+FTW can now use SportsGameOdds sportsbook-consensus player props as a secondary projection signal.
+
+Set this server-side environment variable in Netlify:
+`SPORTSGAMEODDS_KEY=your_key_here`
+
+How the blend works:
+- 5+ books on a prop: 40% sportsbook consensus / 60% FTW model
+- 3–4 books: 35% sportsbook consensus / 65% FTW model
+- 1–2 books: 25% sportsbook consensus / 75% FTW model
+- No market posted: FTW keeps its native projection unchanged
+
+Fantasy-relevant props include passing yards/TDs/attempts/completions, rushing yards/attempts/TDs, receiving yards/receptions/TDs, plus anytime-TD probability when available.
+
+Sportsbook data is fetched only from the server through `/api/vegas`; the API key is never intentionally exposed to the browser. The route is cached for 10 minutes to reduce API usage.
+
+Vegas is not treated as truth. FTW still applies league scoring, injury status and the 2025 position-specific defensive matchup model. The market acts as a calibration layer.

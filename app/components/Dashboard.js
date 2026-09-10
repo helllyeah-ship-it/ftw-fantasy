@@ -89,6 +89,7 @@ export default function Dashboard(){
   const [playerInsightError,setPlayerInsightError]=useState("");
   const [defenseRankings,setDefenseRankings]=useState({});
   const [weekMatchups,setWeekMatchups]=useState({});
+  const [vegasFeed,setVegasFeed]=useState({configured:false,provider:"SportsGameOdds",players:{}});
 
   useEffect(()=>{
     (async()=>{
@@ -109,12 +110,14 @@ export default function Dashboard(){
     if(!nfl?.season || !nfl?.week) return;
     (async()=>{
       try{
-        const [feed,matchupFeed]=await Promise.all([
+        const [feed,matchupFeed,vegas]=await Promise.all([
           safeJson(`/api/provider/projections?season=${nfl.season}&week=${nfl.week}`),
-          safeJson(`/api/week-matchups?season=${nfl.season}&week=${nfl.week}`).catch(()=>({matchups:{}}))
+          safeJson(`/api/week-matchups?season=${nfl.season}&week=${nfl.week}`).catch(()=>({matchups:{}})),
+          safeJson(`/api/vegas`).catch(()=>({configured:false,players:{}}))
         ]);
         setProjectionFeed(feed);
         setWeekMatchups(matchupFeed?.matchups||{});
+        setVegasFeed(vegas||{configured:false,players:{}});
         setProjectionError("");
       }catch(e){
         setProjectionError(e.message || "Projection feed unavailable");
@@ -135,6 +138,101 @@ export default function Dashboard(){
     ) || projectionFeed.projections.find(x=>normalizeName(x.name)===n) || null;
   };
 
+
+  const vegasFor=(p)=>{
+    if(!p||!vegasFeed?.players)return null;
+    const key=normalizeName(name(p));
+    return vegasFeed.players[key]||null;
+  };
+
+  const vegasLine=(p,statID)=>{
+    const v=vegasFor(p)?.props?.[statID];
+    const line=Number(v?.line);
+    return Number.isFinite(line)?line:null;
+  };
+
+  const vegasBlendWeight=(p,statID)=>{
+    const books=Number(vegasFor(p)?.props?.[statID]?.books||0);
+    if(books>=5)return 0.40;
+    if(books>=3)return 0.35;
+    if(books>=1)return 0.25;
+    return 0;
+  };
+
+  const blendStat=(p,base,statID)=>{
+    const model=Number(base||0);
+    const market=vegasLine(p,statID);
+    const weight=vegasBlendWeight(p,statID);
+    if(!Number.isFinite(market)||weight<=0)return model;
+    return model*(1-weight)+market*weight;
+  };
+
+  const vegasAdjustedStats=(p)=>{
+    const pr=projectionFor(p);
+    if(!pr)return null;
+
+    const adjusted={...pr};
+    adjusted.passingYards=blendStat(p,pr.passingYards,"passing_yards");
+    adjusted.passingTouchdowns=blendStat(p,pr.passingTouchdowns,"passing_touchdowns");
+    adjusted.passingAttempts=blendStat(p,pr.passingAttempts,"passing_attempts");
+    adjusted.passingCompletions=blendStat(p,pr.passingCompletions,"passing_completions");
+    adjusted.rushingYards=blendStat(p,pr.rushingYards,"rushing_yards");
+    adjusted.rushingAttempts=blendStat(p,pr.rushingAttempts,"rushing_attempts");
+    adjusted.rushingTouchdowns=blendStat(p,pr.rushingTouchdowns,"rushing_touchdowns");
+    adjusted.receivingYards=blendStat(p,pr.receivingYards,"receiving_yards");
+    adjusted.receptions=blendStat(p,pr.receptions,"receiving_receptions");
+    adjusted.receivingTargets=blendStat(p,pr.receivingTargets,"receiving_targets");
+    adjusted.receivingTouchdowns=blendStat(p,pr.receivingTouchdowns,"receiving_touchdowns");
+
+    // If a specific receiving/rushing TD line is unavailable, use the market's
+    // anytime-TD probability as a conservative total-TD correction for RB/WR/TE.
+    const tdMarket=vegasFor(p)?.props?.touchdowns;
+    const tdProb=Number(tdMarket?.probability);
+    if(["RB","WR","TE"].includes(p.position)&&Number.isFinite(tdProb)){
+      const rawRush=Number(adjusted.rushingTouchdowns||0);
+      const rawRec=Number(adjusted.receivingTouchdowns||0);
+      const rawTotal=rawRush+rawRec;
+      const books=Number(tdMarket?.books||0);
+      const weight=books>=5?.30:books>=3?.25:.18;
+      const marketTotal=Math.max(0,Math.min(1,tdProb));
+      const target=rawTotal*(1-weight)+marketTotal*weight;
+      if(rawTotal>0){
+        adjusted.rushingTouchdowns=target*(rawRush/rawTotal);
+        adjusted.receivingTouchdowns=target*(rawRec/rawTotal);
+      }else if(p.position==="RB"){
+        adjusted.rushingTouchdowns=target*.65;
+        adjusted.receivingTouchdowns=target*.35;
+      }else{
+        adjusted.receivingTouchdowns=target;
+      }
+    }
+
+    return adjusted;
+  };
+
+  const vegasSummary=(p)=>{
+    const v=vegasFor(p);
+    if(!v)return null;
+    const entries=[];
+    const labels={
+      passing_yards:"Pass yds",
+      passing_touchdowns:"Pass TD",
+      rushing_yards:"Rush yds",
+      receiving_yards:"Rec yds",
+      receiving_receptions:"Receptions",
+      touchdowns:"Any TD"
+    };
+    for(const [key,label] of Object.entries(labels)){
+      const prop=v.props?.[key];
+      if(Number.isFinite(Number(prop?.line))){
+        entries.push(`${label} ${Number(prop.line).toFixed(key.includes("touchdowns")?1:1)}`);
+      }else if(key==="touchdowns"&&Number.isFinite(Number(prop?.probability))){
+        entries.push(`${label} ${(Number(prop.probability)*100).toFixed(0)}%`);
+      }
+    }
+    return entries.slice(0,4);
+  };
+
   const format=useMemo(()=>{
     const s=league?.scoring_settings||{};
     const ppr=Number(s.rec||0), sf=(league?.roster_positions||[]).includes("SUPER_FLEX");
@@ -149,7 +247,7 @@ export default function Dashboard(){
   };
 
   const rawFantasyPoints=(p)=>{
-    const pr=projectionFor(p);
+    const pr=vegasAdjustedStats(p);
     if(!pr)return null;
 
     const fields=[
@@ -934,7 +1032,7 @@ export default function Dashboard(){
                 </div>
               </div>
 
-              {selectedPlayer&&projectionFor(selectedPlayer)&&(()=>{const pr=projectionFor(selectedPlayer);const position=selectedPlayer.position;const totalTds=Number(pr?.rushingTouchdowns||0)+Number(pr?.receivingTouchdowns||0);return <div className="modalSection workloadSection">
+              {selectedPlayer&&projectionFor(selectedPlayer)&&(()=>{const pr=vegasAdjustedStats(selectedPlayer)||projectionFor(selectedPlayer);const position=selectedPlayer.position;const totalTds=Number(pr?.rushingTouchdowns||0)+Number(pr?.receivingTouchdowns||0);return <div className="modalSection workloadSection">
                 <div className="modalSectionHead"><div><small>PROJECTED OPPORTUNITY</small><h3>Expected workload</h3></div></div>
                 <div className="workloadGrid">
                   {position==="QB"&&<div><small>PASS ATT</small><b>{Number(pr?.passingAttempts||0).toFixed(1)}</b></div>}
@@ -959,6 +1057,17 @@ export default function Dashboard(){
                   {position==="RB"&&<div><small>TOTAL TD</small><b>{totalTds.toFixed(2)}</b></div>}
                 </div>
               </div>})()}
+
+              {selectedPlayer&&vegasFor(selectedPlayer)&&<div className="modalSection vegasSection">
+                <div className="modalSectionHead">
+                  <div><small>VEGAS ADJUSTMENT</small><h3>Sportsbook consensus</h3></div>
+                  <span>FTW blends its model with current sportsbook player-prop consensus. More books = more market weight.</span>
+                </div>
+                <div className="vegasGrid">
+                  {(vegasSummary(selectedPlayer)||[]).map((item,i)=><div key={i}><b>{item}</b></div>)}
+                </div>
+                <p className="muted vegasNote">Vegas is a secondary signal, not the entire projection. FTW still uses workload, league scoring, injuries and matchup strength.</p>
+              </div>}
 
               <div className="modalColumns">
                 <div className="modalSection">
