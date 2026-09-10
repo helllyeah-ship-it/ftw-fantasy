@@ -137,3 +137,283 @@ button,input,select{font:inherit}.topbar{height:66px;position:sticky;top:0;z-ind
   .playerAvatar.lg{width:42px;height:42px}
   .playerIdentity{gap:7px}
 }
+
+
+/* Clickable player profiles */
+.playerRowButton,
+.playerCardButton,
+.playerTitleButton,
+.playerFocusButton,
+.playerIdentityButton,
+.tradeSelectedPlayer,
+.profileLink{
+  font:inherit;
+  color:inherit;
+}
+.playerRowButton{
+  width:100%;
+  border:0;
+  background:transparent;
+  text-align:left;
+}
+.playerRowButton:hover,
+.playerCardButton:hover{
+  background:rgba(38,247,238,.045);
+}
+.playerCardButton{
+  width:100%;
+  border:1px solid var(--line);
+  text-align:left;
+}
+.playerTitleButton{
+  border:0;
+  background:transparent;
+  padding:0;
+  text-align:left;
+}
+.playerFocusButton{
+  width:100%;
+  border:0;
+  background:transparent;
+  color:white;
+  text-align:left;
+  cursor:pointer;
+}
+.profileLink{
+  border:0;
+  background:none;
+  padding:8px 0 0;
+  color:var(--cyan);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.7px;
+}
+.playerAvatar.xl{
+  width:88px;
+  height:88px;
+  border-width:2px;
+  box-shadow:0 0 28px rgba(38,247,238,.22);
+}
+.playerAvatar.xl .avatarFallback{font-size:20px}
+
+.modalBackdrop{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:rgba(3,0,9,.82);
+  backdrop-filter:blur(8px);
+  display:grid;
+  place-items:center;
+  padding:22px;
+}
+.playerModal{
+  position:relative;
+  width:min(960px,96vw);
+  max-height:92vh;
+  overflow:auto;
+  padding:22px;
+  border-color:rgba(38,247,238,.32);
+  box-shadow:0 0 55px rgba(135,86,255,.24);
+}
+.modalClose{
+  position:absolute;
+  top:12px;
+  right:14px;
+  z-index:2;
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  border:1px solid var(--line);
+  background:#12041d;
+  color:#fff;
+  font-size:24px;
+  line-height:1;
+}
+.playerModalHero{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  padding:4px 45px 18px 0;
+}
+.playerModalHero h2{
+  margin:4px 0 8px;
+  font-size:30px;
+}
+.playerModalHero small,
+.modalSectionHead small{
+  color:var(--cyan);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:1.2px;
+}
+.playerBadges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.badge{
+  display:inline-flex;
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:5px 8px;
+  font-size:9px;
+  font-weight:900;
+}
+.badge.good{color:var(--green);border-color:rgba(74,255,150,.28)}
+.badge.caution{color:var(--yellow);border-color:rgba(255,230,109,.28)}
+.projectionBadge{color:var(--cyan)}
+
+.advicePanel{
+  display:grid;
+  grid-template-columns:135px 1fr;
+  gap:15px;
+  align-items:center;
+  padding:16px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  background:rgba(255,255,255,.025);
+}
+.adviceCall{
+  min-height:74px;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  border-radius:12px;
+  font-size:16px;
+  font-weight:1000;
+  letter-spacing:.5px;
+}
+.adviceCall.start{background:rgba(74,255,150,.08);color:var(--green);border:1px solid rgba(74,255,150,.24)}
+.adviceCall.sit{background:rgba(255,230,109,.07);color:var(--yellow);border:1px solid rgba(255,230,109,.22)}
+.advicePanel p{
+  margin:5px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.55;
+}
+.modalSection{
+  margin-top:16px;
+  padding:16px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;
+  background:rgba(255,255,255,.018);
+}
+.modalSectionHead{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.modalSectionHead h3{margin:3px 0 0;font-size:17px}
+.modalSectionHead>span{
+  color:var(--muted);
+  font-size:9px;
+  max-width:430px;
+  text-align:right;
+  line-height:1.4;
+}
+.futureGrid{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:7px;
+}
+.futureGame{
+  padding:10px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:11px;
+  background:#0b0212;
+}
+.futureGame>div{
+  display:flex;
+  justify-content:space-between;
+  gap:5px;
+  align-items:center;
+}
+.futureGame>div b{color:var(--pink);font-size:10px}
+.futureGame>div small{color:var(--muted);font-size:9px}
+.futureGame strong{
+  display:block;
+  margin:9px 0 7px;
+  font-size:18px;
+  color:var(--cyan);
+}
+.difficulty{
+  display:inline-flex;
+  padding:4px 6px;
+  border-radius:999px;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.6px;
+}
+.difficulty.easy{color:var(--green);background:rgba(74,255,150,.08)}
+.difficulty.medium{color:var(--yellow);background:rgba(255,230,109,.07)}
+.difficulty.hard{color:var(--pink);background:rgba(255,43,214,.08)}
+.difficulty.tbd{color:var(--muted);background:rgba(255,255,255,.05)}
+.modalColumns{
+  display:grid;
+  grid-template-columns:.8fr 1.2fr;
+  gap:10px;
+}
+.injuryCard b{color:var(--yellow)}
+.injuryCard p{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.5;
+}
+.injuryCard small{color:var(--muted);font-size:9px}
+.newsList{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+.newsList a{
+  display:block;
+  text-decoration:none;
+  color:white;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.065);
+  border-radius:10px;
+  background:#0b0212;
+}
+.newsList a:hover{border-color:rgba(38,247,238,.3)}
+.newsList a b{font-size:11px;line-height:1.35}
+.newsList a p{
+  margin:5px 0;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.4;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.newsList a small{color:var(--cyan);font-size:8px}
+.modalLoading,.modalError{
+  padding:18px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  color:var(--muted);
+  font-size:11px;
+}
+.modalError{color:var(--yellow)}
+.modalFoot{
+  margin-top:13px;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.45;
+}
+.muted{color:var(--muted);font-size:10px}
+
+@media(max-width:760px){
+  .modalBackdrop{padding:8px}
+  .playerModal{width:100%;max-height:96vh;padding:16px}
+  .playerAvatar.xl{width:70px;height:70px}
+  .playerModalHero h2{font-size:23px}
+  .advicePanel{grid-template-columns:1fr}
+  .adviceCall{min-height:48px}
+  .futureGrid{grid-template-columns:repeat(2,1fr)}
+  .modalColumns{grid-template-columns:1fr}
+  .modalSectionHead{align-items:flex-start;flex-direction:column}
+  .modalSectionHead>span{text-align:left}
+}

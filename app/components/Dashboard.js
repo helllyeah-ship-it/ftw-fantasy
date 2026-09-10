@@ -57,6 +57,10 @@ export default function Dashboard(){
   const [gmText,setGmText]=useState("");
   const [projectionFeed,setProjectionFeed]=useState({configured:false,provider:"Sleeper",retrievedAt:null,projections:[]});
   const [projectionError,setProjectionError]=useState("");
+  const [selectedPlayer,setSelectedPlayer]=useState(null);
+  const [playerInsight,setPlayerInsight]=useState(null);
+  const [playerInsightLoading,setPlayerInsightLoading]=useState(false);
+  const [playerInsightError,setPlayerInsightError]=useState("");
 
   useEffect(()=>{
     (async()=>{
@@ -269,6 +273,87 @@ export default function Dashboard(){
     setGmMessages(m=>[...m,{who:"user",text:q},{who:"bot",text:gmAnswer(q)}]);setGmText("");
   };
 
+  const openPlayer=async(p)=>{
+    if(!p)return;
+    setSelectedPlayer(p);
+    setPlayerInsight(null);
+    setPlayerInsightError("");
+    setPlayerInsightLoading(true);
+    try{
+      const season=nfl?.season || new Date().getFullYear();
+      const week=nfl?.week || 1;
+      const q=new URLSearchParams({
+        season:String(season),
+        week:String(week),
+        sleeperId:id(p),
+        espnId:String(p?.espn_id||p?.espnId||""),
+        team:String(p?.team||""),
+        name:name(p)
+      });
+      const insight=await safeJson(`/api/player/insight?${q.toString()}`);
+      setPlayerInsight(insight);
+    }catch(e){
+      setPlayerInsightError(e.message||"Player details are temporarily unavailable.");
+    }finally{
+      setPlayerInsightLoading(false);
+    }
+  };
+
+  const closePlayer=()=>{
+    setSelectedPlayer(null);
+    setPlayerInsight(null);
+    setPlayerInsightError("");
+  };
+
+  const modalProjection=(row)=>{
+    const rec=Number(league?.scoring_settings?.rec ?? 0.5);
+    const p=row?.projection;
+    if(!p)return null;
+    const value=rec>=1?p.ppr:rec>=0.5?p.halfPpr:p.standard;
+    return Number.isFinite(Number(value))?Number(value):null;
+  };
+
+  const futureProjectionRows=()=>{
+    const rows=(playerInsight?.future||[]).map(row=>({
+      ...row,
+      points:modalProjection(row)
+    }));
+    const vals=rows.map(x=>x.points).filter(Number.isFinite);
+    const avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+    return rows.map(row=>{
+      let difficulty="TBD";
+      if(Number.isFinite(row.points)&&Number.isFinite(avg)&&avg>0){
+        const ratio=row.points/avg;
+        difficulty=ratio>=1.10?"EASY":ratio<=0.90?"HARD":"MEDIUM";
+      }
+      return {...row,difficulty};
+    });
+  };
+
+  const selectedAdvice=()=>{
+    const p=selectedPlayer;
+    if(!p)return {call:"—",reason:""};
+    const current=(playerInsight?.future||[]).find(x=>Number(x.week)===Number(nfl?.week||1));
+    const pts=modalProjection(current);
+    const isStarter=optimal.starters.some(x=>x.p&&id(x.p)===id(p));
+    const status=String(p.injury_status||p.status||"").toLowerCase();
+
+    if(status.includes("out")||status.includes("ir")){
+      return {call:"SIT",reason:`${name(p)} is currently listed ${p.injury_status||p.status}. Keep them out unless that designation changes before kickoff.`};
+    }
+    if(status.includes("doubt")){
+      return {call:"SIT",reason:`${name(p)} carries a doubtful injury designation, creating too much availability risk for a normal start recommendation.`};
+    }
+    if(isStarter){
+      return {call:"START",reason:Number.isFinite(pts)?`${name(p)} is in your optimized lineup and projects for ${pts.toFixed(1)} points in your ${format.label} scoring.`:`${name(p)} is currently in your optimized FTW lineup for this week.`};
+    }
+    const baseline={QB:17,RB:10,WR:10,TE:8}[p.position]||8;
+    if(Number.isFinite(pts)&&pts>=baseline){
+      return {call:"START / FLEX",reason:`The current weekly projection of ${pts.toFixed(1)} is strong enough to keep ${name(p)} in start/flex consideration, depending on your alternatives.`};
+    }
+    return {call:"SIT / BENCH",reason:Number.isFinite(pts)?`${name(p)} projects for ${pts.toFixed(1)} this week and currently falls behind your optimized starters.`:`FTW does not have a reliable weekly projection for ${name(p)} right now, so the safer call is to compare them against your other available starters.`};
+  };
+
   const multiSelect=(e,setter)=>{
     const vals=[...e.target.selectedOptions].map(o=>o.value).slice(0,3);
     setter(vals);
@@ -282,7 +367,7 @@ export default function Dashboard(){
 
     <div className="shell">
       <section className="hero">
-        <div><small>FANTASY FOOTBALL • SIMPLIFIED</small><h1>BUILD THE <em>WINNING</em> TEAM.</h1><p>One clean place for roster grades, lineup decisions, trades, waivers and live player movement.</p></div>
+        <div><small>FANTASY FOOTBALL • SIMPLIFIED</small><h1>BUILD THE <em>WINNING</em> TEAM.</h1><p>The one stop shop for everything you need to win your fantasy leagues!</p></div>
         <div className="week glass"><small>NFL STATE</small><b>{nfl?`WEEK ${nfl.display_week||nfl.week}`:"…"}</b><span>{nfl?`${nfl.season} ${String(nfl.season_type).toUpperCase()}`:"Connecting"}</span></div>
       </section>
 
@@ -321,13 +406,13 @@ export default function Dashboard(){
         </div>
         <div className="roster glass">
           <div className="row rowHead"><span>PLAYER</span><span>POS</span><span>WEEK PROJ</span><span>STATUS</span></div>
-          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><div className="row" key={id(p)}><span className="playerIdentity"><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?`${projectedFantasyPoints(p).toFixed(1)} pts`:"—"}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></div>)}
+          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><button type="button" className="row playerRowButton" key={id(p)} onClick={()=>openPlayer(p)}><span className="playerIdentity"><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?`${projectedFantasyPoints(p).toFixed(1)} pts`:"—"}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></div>)}
         </div>
       </section>}
 
       {tab==="optimize"&&<section>
         <Head kicker="LINEUP ENGINE" title="Best Legal Lineup"/>
-        <div className="lineup">{optimal.starters.map((x,i)=><div className="slot glass" key={`${x.slot}-${i}`}><span>{x.slot}</span>{x.p?<div className="slotPlayer"><PlayerAvatar p={x.p} size="sm"/><b>{name(x.p)}</b></div>:<b>EMPTY</b>}<em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em></div>)}</div>
+        <div className="lineup">{optimal.starters.map((x,i)=><button type="button" className="slot glass playerCardButton" key={`${x.slot}-${i}`} onClick={()=>x.p&&openPlayer(x.p)}><span>{x.slot}</span>{x.p?<div className="slotPlayer"><PlayerAvatar p={x.p} size="sm"/><b>{name(x.p)}</b></div>:<b>EMPTY</b>}<em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em></button>)}</div>
         <div className="result glass"><h3>BENCH CHECK</h3><p>{optimal.bench[0]?`${name(optimal.bench[0])} is your highest-rated bench player at FTW ${score(optimal.bench[0])}. Recheck late injury news before kickoff.`:"No extra bench player is available."}</p></div>
       </section>}
 
@@ -335,12 +420,12 @@ export default function Dashboard(){
         <Head kicker="WEEKLY DECISION" title="Start / Sit"/>
         <div className="explainer glass"><b>How FTW decides:</b> League scoring, positional value, live Sleeper injury/status metadata, depth-chart placement and recent player movement all influence the recommendation. The FTW score is a decision model, not an official projection.</div>
         <div className="compare">
-          <PlayerPicker label="PLAYER A" value={startA} set={setStartA} pool={pool} score={score} projection={projectedFantasyPoints}/>
+          <PlayerPicker label="PLAYER A" value={startA} set={setStartA} pool={pool} score={score} projection={projectedFantasyPoints} onPlayer={openPlayer}/>
           <div className="vs">VS</div>
-          <PlayerPicker label="PLAYER B" value={startB} set={setStartB} pool={pool} score={score} projection={projectedFantasyPoints}/>
+          <PlayerPicker label="PLAYER B" value={startB} set={setStartB} pool={pool} score={score} projection={projectedFantasyPoints} onPlayer={openPlayer}/>
         </div>
         {startWinner&&<div className="result glass">
-          <h3 className="resultPlayerTitle"><PlayerAvatar p={startWinner} size="lg"/><span>START {name(startWinner).toUpperCase()}</span></h3>
+          <button type="button" className="resultPlayerTitle playerTitleButton" onClick={()=>openPlayer(startWinner)}><PlayerAvatar p={startWinner} size="lg"/><span>START {name(startWinner).toUpperCase()}</span></button>
           <p>{projectionFor(startWinner)
             ? `${name(startWinner)} has the stronger provider-backed weekly outlook for your scoring format.`
             : `${name(startWinner)} currently grades ahead of ${name(startLoser)} in FTW fallback mode because a paid projection feed is not configured.`}</p>
@@ -361,9 +446,9 @@ export default function Dashboard(){
         <div className="explainer glass"><b>How FTW decides:</b> It evaluates each side using league-format scarcity, roster construction, package size, elite-player consolidation, current player status and your biggest positional need.</div>
         <p className="helper">Select up to three players on each side. FTW applies league-format scarcity and an elite-player consolidation premium.</p>
         <div className="compare">
-          <TradeSide label="YOU GIVE" ids={give} onChange={e=>multiSelect(e,setGive)} pool={tradePool.length?tradePool:DEMO} value={gv} valueFn={tradeValue}/>
+          <TradeSide label="YOU GIVE" ids={give} onChange={e=>multiSelect(e,setGive)} pool={tradePool.length?tradePool:DEMO} value={gv} valueFn={tradeValue} onPlayer={openPlayer}/>
           <div className="vs">⇄</div>
-          <TradeSide label="YOU GET" ids={get} onChange={e=>multiSelect(e,setGet)} pool={tradePool.length?tradePool:DEMO} value={rv} valueFn={tradeValue}/>
+          <TradeSide label="YOU GET" ids={get} onChange={e=>multiSelect(e,setGet)} pool={tradePool.length?tradePool:DEMO} value={rv} valueFn={tradeValue} onPlayer={openPlayer}/>
         </div>
         {(give.length>0&&get.length>0)&&<div className="result glass">
           <h3>{winPct>=57?"ACCEPT":winPct>=46?"FAIR TRADE":"DECLINE"} • YOU {winPct}% / THEM {100-winPct}%</h3>
@@ -390,9 +475,10 @@ export default function Dashboard(){
           const delta=d?(providerUpgrade!==null?Math.round((pProj-dProj)*10)/10:score(p)-score(d)):0;
           return <div className="waiver glass" key={t.player_id}>
             <div className="waiverTop">
-              <div className="playerIdentity"><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.position} • {p.team||"FA"} • FTW decision score {score(p)}</small></span></div>
+              <button type="button" className="playerIdentity playerIdentityButton" onClick={()=>openPlayer(p)}><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.position} • {p.team||"FA"} • FTW decision score {score(p)}</small></span></div>
               <div><strong>+{t.count}</strong><small>24H Sleeper adds</small></div>
             </div>
+            <button type="button" className="profileLink" onClick={()=>openPlayer(p)}>VIEW PLAYER PROFILE</button>
             <div className="waiverExplain">
               <b>{upgrade?`ADD ${name(p)} • CONSIDER DROPPING ${name(d)}`:"WATCH / HOLD"}</b>
               <p>{upgrade
@@ -418,6 +504,78 @@ export default function Dashboard(){
         </div>
       </section>}
 
+      {selectedPlayer&&(()=>{
+        const advice=selectedAdvice();
+        const rows=futureProjectionRows();
+        const currentRow=rows.find(x=>Number(x.week)===Number(nfl?.week||1));
+        const currentPts=currentRow?.points;
+        const injury=selectedPlayer.injury_status||selectedPlayer.status||playerInsight?.espnInjury?.status||"Active";
+        return <div className="modalBackdrop" onMouseDown={e=>e.target===e.currentTarget&&closePlayer()}>
+          <div className="playerModal glass" role="dialog" aria-modal="true" aria-label={`${name(selectedPlayer)} fantasy profile`}>
+            <button type="button" className="modalClose" onClick={closePlayer}>×</button>
+
+            <div className="playerModalHero">
+              <PlayerAvatar p={selectedPlayer} size="xl"/>
+              <div>
+                <small>{selectedPlayer.position} • {selectedPlayer.team||"FA"} • WEEK {nfl?.week||1}</small>
+                <h2>{name(selectedPlayer)}</h2>
+                <div className="playerBadges">
+                  <span className={String(injury).toLowerCase()==="active"?"badge good":"badge caution"}>{injury}</span>
+                  {Number.isFinite(currentPts)&&<span className="badge projectionBadge">{currentPts.toFixed(1)} PROJECTED PTS</span>}
+                </div>
+              </div>
+            </div>
+
+            {playerInsightLoading&&<div className="modalLoading">Loading projections, schedule and player news…</div>}
+            {playerInsightError&&<div className="modalError">{playerInsightError}</div>}
+
+            {!playerInsightLoading&&<>
+              <div className="advicePanel">
+                <div className={`adviceCall ${advice.call.includes("START")?"start":"sit"}`}>{advice.call}</div>
+                <div><small>FTW WEEKLY ADVICE</small><p>{advice.reason}</p></div>
+              </div>
+
+              <div className="modalSection">
+                <div className="modalSectionHead"><div><small>REST OF SEASON</small><h3>Schedule + projections</h3></div><span>Difficulty is based on this player's projected scoring versus their own remaining-week average.</span></div>
+                <div className="futureGrid">
+                  {rows.length?rows.map(row=><div className="futureGame" key={row.week}>
+                    <div><b>W{row.week}</b><small>{row.matchup?.homeAway==="home"?"vs":"@"} {row.matchup?.opponent||"TBD"}</small></div>
+                    <strong>{Number.isFinite(row.points)?row.points.toFixed(1):"—"}</strong>
+                    <span className={`difficulty ${String(row.difficulty).toLowerCase()}`}>{row.difficulty}</span>
+                  </div>):<p className="muted">Future weekly projections are not available from the current projection feed.</p>}
+                </div>
+              </div>
+
+              <div className="modalColumns">
+                <div className="modalSection">
+                  <div className="modalSectionHead"><div><small>AVAILABILITY</small><h3>Injury report</h3></div></div>
+                  <div className="injuryCard">
+                    <b>{injury}</b>
+                    <p>{playerInsight?.espnInjury?.detail || (selectedPlayer.injury_status
+                      ? `${name(selectedPlayer)} currently carries a ${selectedPlayer.injury_status} designation in Sleeper player data. Recheck before lineup lock.`
+                      : `No current injury designation is shown for ${name(selectedPlayer)} in Sleeper player data.`)}</p>
+                    {playerInsight?.espnInjury?.bodyPart&&<small>Reported area: {playerInsight.espnInjury.bodyPart}</small>}
+                  </div>
+                </div>
+
+                <div className="modalSection">
+                  <div className="modalSectionHead"><div><small>LATEST</small><h3>Player news</h3></div><span>ESPN</span></div>
+                  <div className="newsList">
+                    {(playerInsight?.news||[]).length?playerInsight.news.map(item=><a key={item.id} href={item.link||"#"} target={item.link?"_blank":undefined} rel="noreferrer">
+                      <b>{item.headline}</b>
+                      {item.description&&<p>{item.description}</p>}
+                      {item.published&&<small>{new Date(item.published).toLocaleDateString()}</small>}
+                    </a>):<p className="muted">No recent ESPN player-specific stories were returned.</p>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="modalFoot">Click any player throughout FTW Fantasy to reopen this profile. Projection and matchup information can change as news, injuries and depth charts change.</div>
+            </>}
+          </div>
+        </div>
+      })()}
+
       <section className="ticker glass"><b>FTW WIRE</b><span>{trending.slice(0,8).map(t=>players[t.player_id]).filter(Boolean).map(name).join(" • ")||"Connecting to live player movement…"}</span></section>
     </div>
 
@@ -427,6 +585,6 @@ export default function Dashboard(){
 
 function Head({kicker,title}){return <div className="head"><div><small>{kicker}</small><h2>{title}</h2></div></div>}
 function Stat({label,value}){return <div className="stat glass"><small>{label}</small><b>{value}</b></div>}
-function PlayerPicker({label,value,set,pool,score,projection}){const p=pool.find(x=>id(x)===String(value));return <div className="picker glass"><label>{label}</label><select value={value} onChange={e=>set(e.target.value)}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} — {p.position}</option>)}</select>{p&&<div className="focus"><PlayerAvatar p={p} size="lg"/><div className="focusInfo"><strong>{projection?.(p)!==null?`${projection(p).toFixed(1)} pts`:score(p)}</strong><b>{name(p)}</b><small>{projection?.(p)!==null?"LIVE WEEKLY PROJECTION":"FTW FALLBACK SCORE"} • {p.position} • {p.team||"FA"} • {p.injury_status||p.status||"Active"}</small></div></div>}</div>}
+function PlayerPicker({label,value,set,pool,score,projection,onPlayer}){const p=pool.find(x=>id(x)===String(value));return <div className="picker glass"><label>{label}</label><select value={value} onChange={e=>set(e.target.value)}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} — {p.position}</option>)}</select>{p&&<button type="button" className="focus playerFocusButton" onClick={()=>onPlayer?.(p)}><PlayerAvatar p={p} size="lg"/><div className="focusInfo"><strong>{projection?.(p)!==null?`${projection(p).toFixed(1)} pts`:score(p)}</strong><b>{name(p)}</b><small>{projection?.(p)!==null?"LIVE WEEKLY PROJECTION":"FTW FALLBACK SCORE"} • {p.position} • {p.team||"FA"} • {p.injury_status||p.status||"Active"}</small></div></button></div>}</div>}
 function Why({title,items}){return <div className="why"><b>{title}</b><ul>{items.filter(Boolean).slice(0,7).map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
-function TradeSide({label,ids,onChange,pool,value,valueFn}){return <div className="tradeSide glass"><label>{label}</label><select multiple size={10} value={ids} onChange={onChange}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} • {p.position} • {valueFn(p)}</option>)}</select><div className="tradeSelected">{ids.map(pid=>{const p=pool.find(x=>id(x)===String(pid));return p?<div className="tradeSelectedPlayer" key={pid}><PlayerAvatar p={p} size="xs"/><span>{name(p)}</span></div>:null})}</div><div className="package"><span>PACKAGE</span><b>{value}</b></div></div>}
+function TradeSide({label,ids,onChange,pool,value,valueFn,onPlayer}){return <div className="tradeSide glass"><label>{label}</label><select multiple size={10} value={ids} onChange={onChange}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} • {p.position} • {valueFn(p)}</option>)}</select><div className="tradeSelected">{ids.map(pid=>{const p=pool.find(x=>id(x)===String(pid));return p?<button type="button" className="tradeSelectedPlayer" key={pid} onClick={()=>onPlayer?.(p)}><PlayerAvatar p={p} size="xs"/><span>{name(p)}</span></button>:null})}</div><div className="package"><span>PACKAGE</span><b>{value}</b></div></div>}

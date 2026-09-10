@@ -126,3 +126,17 @@ FTW reads the `espn_id` included in Sleeper player metadata and builds the image
 `https://a.espncdn.com/i/headshots/nfl/players/full/<espn_id>.png`
 
 If ESPN has no image for a player, or the player's Sleeper record does not contain an ESPN ID, the UI falls back to the player's initials without breaking the layout.
+
+
+## Clickable player profile upgrade
+Every player can now open a fantasy profile modal. The modal includes:
+- ESPN player avatar
+- current injury/status information
+- FTW Start/Sit recommendation for the active week
+- rest-of-season weekly projections
+- opponent and schedule difficulty for each remaining regular-season week
+- recent ESPN player news
+
+The profile API route is `/api/player/insight`.
+
+Future weekly projections come from the same Sleeper projection adapter used elsewhere in FTW. Schedule and player-news data are requested server-side from ESPN endpoints. Schedule difficulty is intentionally transparent: each matchup is labeled EASY / MEDIUM / HARD based on that player's projected points for that week compared with the player's own average across remaining projected games. This avoids pretending the label is an official ESPN defensive matchup grade.
