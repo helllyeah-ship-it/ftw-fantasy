@@ -322,14 +322,14 @@ export default function Dashboard(){
           <div className="glass insight"><small>LIVE MATCHUP</small><p>{matchup?.me?`${Number(matchup.me.points||0).toFixed(1)} vs ${Number(matchup.opp?.points||0).toFixed(1)} points`:"Connect a league for the current matchup."}</p></div>
         </div>
         <div className="roster glass">
-          <div className="row rowHead"><span>PLAYER</span><span>POS</span><span>PROJ</span><span>FTW</span><span>STATUS</span></div>
-          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><div className="row" key={id(p)}><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?projectedFantasyPoints(p).toFixed(1):"—"}</span><span className="mono">{score(p)}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></div>)}
+          <div className="row rowHead"><span>PLAYER</span><span>POS</span><span>WEEK PROJ</span><span>STATUS</span></div>
+          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><div className="row" key={id(p)}><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?`${projectedFantasyPoints(p).toFixed(1)} pts`:"—"}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></div>)}
         </div>
       </section>}
 
       {tab==="optimize"&&<section>
         <Head kicker="LINEUP ENGINE" title="Best Legal Lineup"/>
-        <div className="lineup">{optimal.starters.map((x,i)=><div className="slot glass" key={`${x.slot}-${i}`}><span>{x.slot}</span><b>{x.p?name(x.p):"EMPTY"}</b><em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} pts`:`FTW ${score(x.p)}`):"--"}</em></div>)}</div>
+        <div className="lineup">{optimal.starters.map((x,i)=><div className="slot glass" key={`${x.slot}-${i}`}><span>{x.slot}</span><b>{x.p?name(x.p):"EMPTY"}</b><em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em></div>)}</div>
         <div className="result glass"><h3>BENCH CHECK</h3><p>{optimal.bench[0]?`${name(optimal.bench[0])} is your highest-rated bench player at FTW ${score(optimal.bench[0])}. Recheck late injury news before kickoff.`:"No extra bench player is available."}</p></div>
       </section>}
 

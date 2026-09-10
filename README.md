@@ -114,3 +114,6 @@ The FTW server route caches projection calls for 5 minutes. This is intentionall
 
 ### Fallback behavior
 If `SPORTSDATAIO_API_KEY` is missing or the provider is unavailable, FTW clearly switches back to its heuristic decision model rather than displaying fake provider projections.
+
+## Weekly projection-first UI
+The lineup optimizer and roster views now display weekly projected fantasy points instead of the internal whole-number FTW score whenever the SportsDataIO feed is connected. If the projection provider is unavailable, the UI shows `PROJ —` rather than presenting the fallback model as a weekly projection.

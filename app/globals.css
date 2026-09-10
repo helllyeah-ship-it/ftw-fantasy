@@ -39,3 +39,9 @@ button,input,select{font:inherit}.topbar{height:66px;position:sticky;top:0;z-ind
   .row,.rowHead{grid-template-columns:1fr 34px 44px 38px 58px}
   .providerBar{align-items:flex-start}
 }
+
+/* Weekly projection-first display */
+.row,.rowHead{grid-template-columns:1fr 48px 88px 88px}
+@media(max-width:620px){
+  .row,.rowHead{grid-template-columns:1fr 38px 70px 62px}
+}
