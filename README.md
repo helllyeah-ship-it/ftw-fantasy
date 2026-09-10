@@ -195,3 +195,34 @@ Position-specific matchup source:
 - Rank #1 is the toughest defense and #32 is the most favorable matchup.
 
 The defense API now retains the complete available 2025 ESPN team-stat payload and exposes additional passing, rushing, scoring and situational defensive fields for future FTW models. Player cards display the relevant defense rank and available supporting metrics such as yards allowed per game, touchdowns allowed, interceptions, sacks and yards per carry.
+
+
+## nflverse 2025 defense model
+The previous ESPN defensive-stat parser has been removed from the strength-of-schedule ranking.
+
+FTW now loads a public 2025 defense dataset derived from nflverse regular-season play-by-play and creates two independent 1–32 rankings:
+- PASS DEF: used for QB, WR and TE matchups.
+- RUSH DEF: used for RB matchups.
+
+Pass-defense composite:
+- EPA/play allowed: 30%
+- offensive success rate allowed: 20%
+- yards/play allowed: 20%
+- TD rate allowed: 12%
+- pressure rate: 8%
+- sack rate: 5%
+- interception rate: 5%
+
+Rush-defense composite:
+- EPA/play allowed: 30%
+- offensive success rate allowed: 25%
+- yards/play allowed: 25%
+- TD rate allowed: 12%
+- first-down rate allowed: 8%
+
+Rank #1 is toughest and #32 is most favorable.
+- Red: #1–10
+- Yellow: #11–22
+- Green: #23–32
+
+This guarantees the color distribution comes from a complete league-wide ranking instead of independently classifying raw ESPN fields. The API rejects incomplete data unless all 32 NFL teams are present.

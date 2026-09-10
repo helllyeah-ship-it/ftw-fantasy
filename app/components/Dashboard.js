@@ -617,26 +617,22 @@ export default function Dashboard(){
       const ranks=defenseRankings?.[opp]||null;
 
       let rank=null;
-      let stat=null;
       let metric="OVERALL";
       let details=null;
 
       if(ranks){
         if(["QB","WR","TE"].includes(position)){
           rank=ranks.passRank;
-          stat=ranks.passYardsPerGame;
           metric="PASS";
           details=ranks.passing||null;
         }else if(position==="RB"){
           rank=ranks.rushRank;
-          stat=ranks.rushYardsPerGame;
           metric="RUSH";
           details=ranks.rushing||null;
         }else{
           rank=ranks.overallRank;
-          stat=ranks.pointsAllowedPerGame;
           metric="OVERALL";
-          details=ranks.situational||null;
+          details=ranks.overall||null;
         }
       }
 
@@ -651,7 +647,6 @@ export default function Dashboard(){
         matchupColor,
         defenseRank:rank,
         defenseMetric:metric,
-        defenseStat:stat,
         defenseDetails:details
       };
     });
@@ -716,8 +711,8 @@ export default function Dashboard(){
           <b>{projectionFeed.configured ? "FTW PROJECTION ENGINE LIVE" : "FTW PROJECTION INPUT UNAVAILABLE"}</b>
           <span>{projectionFeed.configured
             ? `${projectionFeed.projections.length} weekly player projections loaded${projectionFeed.retrievedAt?` • refreshed ${new Date(projectionFeed.retrievedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`:""}`
-            : (projectionFeed.detail ? `Projection feed error: ${projectionFeed.detail}` : "No API key required. FTW calculates weekly points from projected stat lines, your league scoring, injuries and 2025 defensive matchup strength.")}</span>
-          {projectionFeed.configured&&<span className="providerAttribution">FTW Projection Engine • Sleeper stat-line input • 2025 defense adjustment</span>}
+            : (projectionFeed.detail ? `Projection feed error: ${projectionFeed.detail}` : "No API key required. FTW calculates weekly points from projected stat lines, your league scoring, injuries and nflverse-derived 2025 defensive matchup strength.")}</span>
+          {projectionFeed.configured&&<span className="providerAttribution">FTW Projection Engine • Sleeper stat-line input • nflverse 2025 defense adjustment</span>}
         </div>
         <div className={projectionFeed.configured?"providerDot on":"providerDot"} />
       </section>
@@ -910,7 +905,7 @@ export default function Dashboard(){
               </div>:null})()}
 
               <div className="modalSection">
-                <div className="modalSectionHead"><div><small>REST OF SEASON</small><h3>Schedule + projections</h3></div><span>Matchup color uses 2025 opponent defense: RB = rush-defense rank; QB/WR/TE = pass-defense rank. #1 is toughest and #32 is most favorable.</span></div>
+                <div className="modalSectionHead"><div><small>REST OF SEASON</small><h3>Schedule + projections</h3></div><span>Matchup color uses a 2025 position-specific defensive composite from nflverse play-by-play. RB = rush-defense rank; QB/WR/TE = pass-defense rank. #1 is toughest and #32 is most favorable.</span></div>
                 <div className="matchupLegend">
                   <span><i className="matchupDot great"/> Great matchup</span>
                   <span><i className="matchupDot okay"/> Okay matchup</span>
@@ -927,12 +922,13 @@ export default function Dashboard(){
                     />
                     {Number.isFinite(Number(row.defenseRank))&&<small className="defenseRank">
                       2025 {row.defenseMetric} DEF #{row.defenseRank}
-                      {Number.isFinite(Number(row.defenseStat))?` • ${Number(row.defenseStat).toFixed(1)} yds/g`:""}
-                      {row.defenseMetric==="PASS"&&Number.isFinite(Number(row.defenseDetails?.touchdownsAllowed))?` • ${Number(row.defenseDetails.touchdownsAllowed)} pass TD allowed`:""}
+                      {Number.isFinite(Number(row.defenseDetails?.epaAllowed))?` • EPA/play ${Number(row.defenseDetails.epaAllowed).toFixed(2)}`:""}
+                      {Number.isFinite(Number(row.defenseDetails?.successRateAllowed))?` • ${(Number(row.defenseDetails.successRateAllowed)*100).toFixed(1)}% success allowed`:""}
+                      {Number.isFinite(Number(row.defenseDetails?.yardsPerPlayAllowed))?` • ${Number(row.defenseDetails.yardsPerPlayAllowed).toFixed(1)} yds/play`:""}
+                      {row.defenseMetric==="PASS"&&Number.isFinite(Number(row.defenseDetails?.pressureRate))?` • ${(Number(row.defenseDetails.pressureRate)*100).toFixed(1)}% pressure`:""}
                       {row.defenseMetric==="PASS"&&Number.isFinite(Number(row.defenseDetails?.interceptions))?` • ${Number(row.defenseDetails.interceptions)} INT`:""}
                       {row.defenseMetric==="PASS"&&Number.isFinite(Number(row.defenseDetails?.sacks))?` • ${Number(row.defenseDetails.sacks)} sacks`:""}
-                      {row.defenseMetric==="RUSH"&&Number.isFinite(Number(row.defenseDetails?.touchdownsAllowed))?` • ${Number(row.defenseDetails.touchdownsAllowed)} rush TD allowed`:""}
-                      {row.defenseMetric==="RUSH"&&Number.isFinite(Number(row.defenseDetails?.yardsPerAttemptAllowed))?` • ${Number(row.defenseDetails.yardsPerAttemptAllowed).toFixed(1)} YPC`:""}
+                      {Number.isFinite(Number(row.defenseDetails?.tdRateAllowed))?` • ${(Number(row.defenseDetails.tdRateAllowed)*100).toFixed(1)}% TD rate`:""}
                     </small>}
                   </div>):<p className="muted">Future weekly projections are not available from the current projection feed.</p>}
                 </div>

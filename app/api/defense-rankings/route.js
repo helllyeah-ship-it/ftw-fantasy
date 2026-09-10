@@ -1,217 +1,264 @@
-const TEAM_IDS = {
-  ARI:22, ATL:1, BAL:33, BUF:2, CAR:29, CHI:3, CIN:4, CLE:5,
-  DAL:6, DEN:7, DET:8, GB:9, HOU:34, IND:11, JAX:30, KC:12,
-  LV:13, LAC:24, LAR:14, MIA:15, MIN:16, NE:17, NO:18, NYG:19,
-  NYJ:20, PHI:21, PIT:23, SF:25, SEA:26, TB:27, TEN:10, WAS:28
+const FRONT_CSV =
+  "https://raw.githubusercontent.com/mccallj/Does-Your-Team-Defense-Actually-Hold-Up/main/data/def_front_2025.csv";
+const OVERVIEW_CSV =
+  "https://raw.githubusercontent.com/mccallj/Does-Your-Team-Defense-Actually-Hold-Up/main/data/def_overview_2025.csv";
+
+const TEAM_FIX = {
+  LA:"LAR"
 };
 
-function number(v){
-  const n=Number(v);
-  return Number.isFinite(n)?n:null;
-}
-
-function collectStats(node,out=[]){
-  if(!node||typeof node!=="object")return out;
-
-  if(Array.isArray(node)){
-    for(const x of node)collectStats(x,out);
-    return out;
+function splitCsvLine(line){
+  const out=[];
+  let cur="";
+  let quoted=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){
+      if(quoted && line[i+1]==='"'){cur+='"';i++;}
+      else quoted=!quoted;
+    }else if(ch==="," && !quoted){
+      out.push(cur);
+      cur="";
+    }else cur+=ch;
   }
-
-  if(typeof node.name==="string" && (node.value!==undefined || node.displayValue!==undefined)){
-    out.push({
-      name:String(node.name||""),
-      label:String(node.label||node.displayName||""),
-      value:number(node.value),
-      displayValue:node.displayValue
-    });
-  }
-
-  for(const value of Object.values(node)){
-    if(value&&typeof value==="object")collectStats(value,out);
-  }
+  out.push(cur);
   return out;
 }
 
-function findStat(stats,names){
-  const wanted=names.map(x=>x.toLowerCase());
-  for(const stat of stats){
-    const n=stat.name.toLowerCase();
-    const l=stat.label.toLowerCase();
-    if(wanted.some(w=>n===w||n.includes(w)||l===w||l.includes(w))){
-      if(Number.isFinite(stat.value))return stat.value;
-      const parsed=parseFloat(String(stat.displayValue||"").replace(/,/g,""));
-      if(Number.isFinite(parsed))return parsed;
-    }
-  }
-  return null;
+function parseCsv(text){
+  const lines=String(text||"").trim().split(/\r?\n/).filter(Boolean);
+  if(!lines.length)return [];
+  const headers=splitCsvLine(lines[0]);
+  return lines.slice(1).map(line=>{
+    const vals=splitCsvLine(line);
+    const row={};
+    headers.forEach((h,i)=>row[h]=vals[i]??"");
+    return row;
+  });
 }
 
-function statMap(stats){
-  const map={};
-  for(const stat of stats){
-    if(!stat?.name)continue;
-    const key=String(stat.name);
-    if(map[key]===undefined){
-      map[key]=Number.isFinite(stat.value)?stat.value:stat.displayValue;
+function n(v){
+  const x=Number(v);
+  return Number.isFinite(x)?x:null;
+}
+
+function weighted(rows,key){
+  let total=0, weight=0;
+  for(const row of rows){
+    const value=n(row[key]);
+    const plays=n(row.plays);
+    if(Number.isFinite(value)&&Number.isFinite(plays)&&plays>0){
+      total+=value*plays;
+      weight+=plays;
     }
   }
+  return weight?total/weight:null;
+}
+
+function sum(rows,key){
+  let total=0, seen=false;
+  for(const row of rows){
+    const value=n(row[key]);
+    if(Number.isFinite(value)){
+      total+=value;
+      seen=true;
+    }
+  }
+  return seen?total:null;
+}
+
+function rankMetric(rows,key,{higherBetter=false}={}){
+  const valid=rows
+    .filter(r=>Number.isFinite(r[key]))
+    .slice()
+    .sort((a,b)=>higherBetter ? b[key]-a[key] : a[key]-b[key]);
+  const map={};
+  valid.forEach((r,i)=>map[r.team]=i+1);
   return map;
 }
 
-function perGame(total,direct,games){
-  if(Number.isFinite(direct))return direct;
-  if(Number.isFinite(total)&&games>0)return total/games;
-  return null;
+function compositeRank(rows,weights){
+  const metricRanks={};
+  for(const w of weights){
+    metricRanks[w.key]=rankMetric(rows,w.key,{higherBetter:w.higherBetter});
+  }
+
+  for(const row of rows){
+    let score=0, used=0;
+    for(const w of weights){
+      const rank=metricRanks[w.key]?.[row.team];
+      if(Number.isFinite(rank)){
+        score+=rank*w.weight;
+        used+=w.weight;
+      }
+    }
+    row.compositeScore=used?score/used:null;
+    row.metricRanks=Object.fromEntries(
+      weights.map(w=>[w.key,metricRanks[w.key]?.[row.team]||null])
+    );
+  }
+
+  const final=rows
+    .filter(r=>Number.isFinite(r.compositeScore))
+    .slice()
+    .sort((a,b)=>a.compositeScore-b.compositeScore);
+
+  const rank={};
+  final.forEach((r,i)=>rank[r.team]=i+1);
+  return rank;
 }
 
-async function teamDefense(abbr,id){
-  const url=`https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/types/2/teams/${id}/statistics`;
-  const res=await fetch(url,{next:{revalidate:86400}});
-  if(!res.ok)throw new Error(`${abbr}: HTTP ${res.status}`);
-  const json=await res.json();
-  const stats=collectStats(json);
-
-  const games=findStat(stats,["gamesPlayed","games played"])||17;
-
-  const passYards=findStat(stats,[
-    "passingYardsAllowed","netPassingYardsAllowed","passYardsAllowed",
-    "opponentPassingYards","passing yards allowed"
-  ]);
-  const rushYards=findStat(stats,[
-    "rushingYardsAllowed","rushYardsAllowed","opponentRushingYards",
-    "rushing yards allowed"
-  ]);
-  const pointsAllowed=findStat(stats,[
-    "pointsAllowed","opponentPoints","totalPointsAllowed","points allowed"
-  ]);
-
-  const passPerGame=findStat(stats,[
-    "passingYardsAllowedPerGame","opponentPassingYardsPerGame","passing yards allowed per game"
-  ]);
-  const rushPerGame=findStat(stats,[
-    "rushingYardsAllowedPerGame","opponentRushingYardsPerGame","rushing yards allowed per game"
-  ]);
-  const pointsPerGame=findStat(stats,[
-    "pointsAllowedPerGame","opponentPointsPerGame","points allowed per game"
-  ]);
-
-  const passAttemptsAllowed=findStat(stats,[
-    "passingAttemptsAllowed","opponentPassingAttempts","pass attempts allowed"
-  ]);
-  const passCompletionsAllowed=findStat(stats,[
-    "passingCompletionsAllowed","opponentPassingCompletions","pass completions allowed"
-  ]);
-  const passTdsAllowed=findStat(stats,[
-    "passingTouchdownsAllowed","passTouchdownsAllowed","opponentPassingTouchdowns","passing touchdowns allowed"
-  ]);
-  const interceptions=findStat(stats,[
-    "interceptions","defensiveInterceptions","passesIntercepted","interceptions made"
-  ]);
-  const sacks=findStat(stats,["sacks","defensiveSacks","sacks made"]);
-  const opponentPasserRating=findStat(stats,[
-    "opponentPasserRating","passerRatingAllowed","opponent quarterback rating"
-  ]);
-  const passYardsPerAttempt=findStat(stats,[
-    "opponentYardsPerPassAttempt","passingYardsPerAttemptAllowed","yards per pass attempt allowed"
-  ]);
-
-  const rushAttemptsAllowed=findStat(stats,[
-    "rushingAttemptsAllowed","opponentRushingAttempts","rush attempts allowed"
-  ]);
-  const rushTdsAllowed=findStat(stats,[
-    "rushingTouchdownsAllowed","rushTouchdownsAllowed","opponentRushingTouchdowns","rushing touchdowns allowed"
-  ]);
-  const rushYardsPerAttempt=findStat(stats,[
-    "opponentYardsPerRushAttempt","rushingYardsPerAttemptAllowed","yards per rush attempt allowed","yards per carry allowed"
-  ]);
-
-  const takeaways=findStat(stats,["takeaways","totalTakeaways","takeaways total"]);
-  const fumbleRecoveries=findStat(stats,["fumbleRecoveries","defensiveFumbleRecoveries"]);
-  const thirdDownPct=findStat(stats,[
-    "opponentThirdDownConvPct","thirdDownConversionPctAllowed","third down conversion percentage allowed"
-  ]);
-  const redZonePct=findStat(stats,[
-    "opponentRedZonePct","redZoneTouchdownPctAllowed","red zone touchdown percentage allowed"
-  ]);
-
-  return {
-    team:abbr,
-    games,
-    passYardsPerGame:perGame(passYards,passPerGame,games),
-    rushYardsPerGame:perGame(rushYards,rushPerGame,games),
-    pointsAllowedPerGame:perGame(pointsAllowed,pointsPerGame,games),
-
-    passing:{
-      attemptsAllowed:passAttemptsAllowed,
-      completionsAllowed:passCompletionsAllowed,
-      touchdownsAllowed:passTdsAllowed,
-      interceptions,
-      sacks,
-      passerRatingAllowed:opponentPasserRating,
-      yardsPerAttemptAllowed:passYardsPerAttempt
+async function fetchCsv(url){
+  const res=await fetch(url,{
+    headers:{
+      Accept:"text/csv,text/plain,*/*",
+      "User-Agent":"FTW-Fantasy/1.0"
     },
-    rushing:{
-      attemptsAllowed:rushAttemptsAllowed,
-      touchdownsAllowed:rushTdsAllowed,
-      yardsPerAttemptAllowed:rushYardsPerAttempt
-    },
-    situational:{
-      takeaways,
-      fumbleRecoveries,
-      thirdDownPctAllowed:thirdDownPct,
-      redZoneTdPctAllowed:redZonePct
-    },
-
-    // Keep the complete 2025 stat payload available for FTW's future models.
-    allStats:statMap(stats)
-  };
-}
-
-function rank(rows,key){
-  const valid=rows.filter(x=>Number.isFinite(x[key])).sort((a,b)=>a[key]-b[key]);
-  const map={};
-  valid.forEach((row,i)=>{map[row.team]=i+1;});
-  return map;
+    next:{revalidate:86400}
+  });
+  if(!res.ok)throw new Error(`Data source HTTP ${res.status}`);
+  return parseCsv(await res.text());
 }
 
 export async function GET(){
   try{
-    const rows=(await Promise.all(
-      Object.entries(TEAM_IDS).map(([abbr,id])=>teamDefense(abbr,id).catch(()=>null))
-    )).filter(Boolean);
+    const [frontRows,overviewRows]=await Promise.all([
+      fetchCsv(FRONT_CSV),
+      fetchCsv(OVERVIEW_CSV)
+    ]);
 
-    // FTW matchup ranking:
-    // #1 allows the fewest yards/game (toughest); #32 allows the most (best matchup).
-    const passRanks=rank(rows,"passYardsPerGame");
-    const rushRanks=rank(rows,"rushYardsPerGame");
-    const overallRanks=rank(rows,"pointsAllowedPerGame");
+    const teams=[...new Set(frontRows.map(r=>TEAM_FIX[r.defteam]||r.defteam).filter(Boolean))];
+
+    const pass=[];
+    const rush=[];
+
+    for(const team of teams){
+      const rawTeam=team==="LAR"?"LA":team;
+
+      const passRows=frontRows.filter(r=>r.defteam===rawTeam&&r.play_type==="pass");
+      const runRows=frontRows.filter(r=>r.defteam===rawTeam&&r.play_type==="run");
+
+      const passPlays=sum(passRows,"plays")||0;
+      const rushPlays=sum(runRows,"plays")||0;
+
+      pass.push({
+        team,
+        plays:passPlays,
+        epaAllowed:weighted(passRows,"epa_allowed"),
+        successRateAllowed:weighted(passRows,"success_rate_allowed"),
+        yardsPerPlayAllowed:weighted(passRows,"yards_allowed"),
+        tdRateAllowed:weighted(passRows,"td_rate"),
+        firstDownRateAllowed:weighted(passRows,"first_down_rate"),
+        pressureRate:weighted(passRows,"pressure_rate"),
+        interceptions:sum(passRows,"interceptions"),
+        sacks:sum(passRows,"sacks"),
+        yacAllowed:weighted(passRows,"yac_allowed"),
+        interceptionRate:passPlays?sum(passRows,"interceptions")/passPlays:null,
+        sackRate:passPlays?sum(passRows,"sacks")/passPlays:null
+      });
+
+      rush.push({
+        team,
+        plays:rushPlays,
+        epaAllowed:weighted(runRows,"epa_allowed"),
+        successRateAllowed:weighted(runRows,"success_rate_allowed"),
+        yardsPerPlayAllowed:weighted(runRows,"yards_allowed"),
+        tdRateAllowed:weighted(runRows,"td_rate"),
+        firstDownRateAllowed:weighted(runRows,"first_down_rate")
+      });
+    }
+
+    // A stronger position-specific rating than "yards allowed" alone.
+    // Lower final rank = tougher defense.
+    const passRank=compositeRank(pass,[
+      {key:"epaAllowed",weight:.30},
+      {key:"successRateAllowed",weight:.20},
+      {key:"yardsPerPlayAllowed",weight:.20},
+      {key:"tdRateAllowed",weight:.12},
+      {key:"pressureRate",weight:.08,higherBetter:true},
+      {key:"sackRate",weight:.05,higherBetter:true},
+      {key:"interceptionRate",weight:.05,higherBetter:true}
+    ]);
+
+    const rushRank=compositeRank(rush,[
+      {key:"epaAllowed",weight:.30},
+      {key:"successRateAllowed",weight:.25},
+      {key:"yardsPerPlayAllowed",weight:.25},
+      {key:"tdRateAllowed",weight:.12},
+      {key:"firstDownRateAllowed",weight:.08}
+    ]);
+
+    const overview={};
+    for(const r of overviewRows){
+      const team=TEAM_FIX[r.defteam]||r.defteam;
+      if(!team)continue;
+      overview[team]={
+        plays:n(r.plays),
+        epaAllowed:n(r.epa_allowed),
+        successRateAllowed:n(r.success_rate_allowed),
+        yardsPerPlayAllowed:n(r.yards_allowed),
+        tdRateAllowed:n(r.td_rate),
+        pressureRate:n(r.pressure_rate),
+        interceptions:n(r.interceptions),
+        sacks:n(r.sacks),
+        epaRank:n(r.epa_rank),
+        successRank:n(r.success_rank),
+        yardsRank:n(r.yards_rank)
+      };
+    }
 
     const rankings={};
-    for(const row of rows){
-      rankings[row.team]={
-        passRank:passRanks[row.team]||null,
-        rushRank:rushRanks[row.team]||null,
-        overallRank:overallRanks[row.team]||null,
-        passYardsPerGame:row.passYardsPerGame,
-        rushYardsPerGame:row.rushYardsPerGame,
-        pointsAllowedPerGame:row.pointsAllowedPerGame,
-        passing:row.passing,
-        rushing:row.rushing,
-        situational:row.situational,
-        allStats:row.allStats
+    for(const team of teams){
+      const p=pass.find(x=>x.team===team)||{};
+      const r=rush.find(x=>x.team===team)||{};
+      rankings[team]={
+        passRank:passRank[team]||null,
+        rushRank:rushRank[team]||null,
+        overallRank:overview[team]?.epaRank||null,
+
+        passing:{
+          plays:p.plays??null,
+          epaAllowed:p.epaAllowed??null,
+          successRateAllowed:p.successRateAllowed??null,
+          yardsPerPlayAllowed:p.yardsPerPlayAllowed??null,
+          tdRateAllowed:p.tdRateAllowed??null,
+          firstDownRateAllowed:p.firstDownRateAllowed??null,
+          pressureRate:p.pressureRate??null,
+          interceptions:p.interceptions??null,
+          sacks:p.sacks??null,
+          yacAllowed:p.yacAllowed??null,
+          metricRanks:p.metricRanks||{}
+        },
+
+        rushing:{
+          plays:r.plays??null,
+          epaAllowed:r.epaAllowed??null,
+          successRateAllowed:r.successRateAllowed??null,
+          yardsPerPlayAllowed:r.yardsPerPlayAllowed??null,
+          tdRateAllowed:r.tdRateAllowed??null,
+          firstDownRateAllowed:r.firstDownRateAllowed??null,
+          metricRanks:r.metricRanks||{}
+        },
+
+        overall:overview[team]||null
       };
+    }
+
+    if(Object.keys(rankings).length!==32){
+      throw new Error(`Expected 32 teams, received ${Object.keys(rankings).length}`);
     }
 
     return Response.json({
       season:2025,
-      source:"ESPN 2025 regular-season team statistics",
+      source:"nflverse 2025 regular-season play-by-play derived defense data",
+      sourceDetail:"Pre-aggregated from nflverse play-by-play in the public Defense Report dataset",
       methodology:{
-        QB:"2025 opponent pass-yards-allowed per game rank",
-        WR:"2025 opponent pass-yards-allowed per game rank",
-        TE:"2025 opponent pass-yards-allowed per game rank",
-        RB:"2025 opponent rush-yards-allowed per game rank",
-        other:"2025 opponent points-allowed per game rank",
+        QB:"2025 composite pass-defense rank",
+        WR:"2025 composite pass-defense rank",
+        TE:"2025 composite pass-defense rank",
+        RB:"2025 composite rush-defense rank",
+        passWeights:"EPA 30%, success rate 20%, yards/play 20%, TD rate 12%, pressure 8%, sacks 5%, interceptions 5%",
+        rushWeights:"EPA 30%, success rate 25%, yards/play 25%, TD rate 12%, first-down rate 8%",
         rankMeaning:"#1 = toughest defense, #32 = most favorable matchup",
         colorTiers:"Red 1-10, Yellow 11-22, Green 23-32"
       },
@@ -222,7 +269,7 @@ export async function GET(){
     return Response.json({
       season:2025,
       rankings:{},
-      error:"Could not build 2025 defense rankings",
+      error:"2025 nflverse defense data unavailable",
       detail:String(error?.message||error)
     },{status:200});
   }
