@@ -47,3 +47,93 @@ button,input,select{font:inherit}.topbar{height:66px;position:sticky;top:0;z-ind
 }
 
 .providerAttribution{opacity:.7;font-size:9px!important;margin-top:2px}
+
+
+/* Player headshot avatars (Sleeper player CDN) */
+.playerIdentity{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.playerIdentity>span:last-child{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+.playerAvatar{
+  position:relative;
+  display:inline-flex;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:center;
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  overflow:hidden;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(46,247,255,.45);
+  box-shadow:0 0 12px rgba(46,247,255,.12);
+  vertical-align:middle;
+}
+.playerAvatar.xs{width:24px;height:24px}
+.playerAvatar.sm{width:30px;height:30px}
+.playerAvatar.lg{width:48px;height:48px}
+.playerAvatar img{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center top;
+}
+.avatarFallback{
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.02em;
+  opacity:.75;
+}
+.playerAvatar.lg .avatarFallback{font-size:12px}
+.slotPlayer{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+}
+.resultPlayerTitle{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.focus{
+  display:grid!important;
+  grid-template-columns:auto 1fr;
+  align-items:center;
+  gap:12px;
+}
+.focusInfo{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+.tradeSelected{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:10px;
+}
+.tradeSelectedPlayer{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 8px 4px 4px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:999px;
+  background:rgba(255,255,255,.04);
+  font-size:11px;
+}
+@media(max-width:620px){
+  .playerAvatar{width:32px;height:32px}
+  .playerAvatar.lg{width:42px;height:42px}
+  .playerIdentity{gap:7px}
+}

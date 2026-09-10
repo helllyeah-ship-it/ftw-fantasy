@@ -25,6 +25,16 @@ const safeJson = async (url) => {
 function name(p){return p?.full_name || [p?.first_name,p?.last_name].filter(Boolean).join(" ") || "Unknown"}
 function id(p){return String(p?.player_id || "")}
 
+function PlayerAvatar({p,size="md"}){
+  const pid=id(p);
+  const initials=name(p).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
+  const src=pid ? `https://sleepercdn.com/content/nfl/players/thumb/${encodeURIComponent(pid)}.jpg` : "";
+  return <span className={`playerAvatar ${size}`} aria-hidden="true">
+    <span className="avatarFallback">{initials||"?"}</span>
+    {src&&<img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e=>{e.currentTarget.style.display="none"}}/>}
+  </span>
+}
+
 export default function Dashboard(){
   const [tab,setTab]=useState("team");
   const [nfl,setNfl]=useState(null);
@@ -311,13 +321,13 @@ export default function Dashboard(){
         </div>
         <div className="roster glass">
           <div className="row rowHead"><span>PLAYER</span><span>POS</span><span>WEEK PROJ</span><span>STATUS</span></div>
-          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><div className="row" key={id(p)}><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?`${projectedFantasyPoints(p).toFixed(1)} pts`:"—"}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></div>)}
+          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><div className="row" key={id(p)}><span className="playerIdentity"><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?`${projectedFantasyPoints(p).toFixed(1)} pts`:"—"}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></div>)}
         </div>
       </section>}
 
       {tab==="optimize"&&<section>
         <Head kicker="LINEUP ENGINE" title="Best Legal Lineup"/>
-        <div className="lineup">{optimal.starters.map((x,i)=><div className="slot glass" key={`${x.slot}-${i}`}><span>{x.slot}</span><b>{x.p?name(x.p):"EMPTY"}</b><em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em></div>)}</div>
+        <div className="lineup">{optimal.starters.map((x,i)=><div className="slot glass" key={`${x.slot}-${i}`}><span>{x.slot}</span>{x.p?<div className="slotPlayer"><PlayerAvatar p={x.p} size="sm"/><b>{name(x.p)}</b></div>:<b>EMPTY</b>}<em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em></div>)}</div>
         <div className="result glass"><h3>BENCH CHECK</h3><p>{optimal.bench[0]?`${name(optimal.bench[0])} is your highest-rated bench player at FTW ${score(optimal.bench[0])}. Recheck late injury news before kickoff.`:"No extra bench player is available."}</p></div>
       </section>}
 
@@ -330,7 +340,7 @@ export default function Dashboard(){
           <PlayerPicker label="PLAYER B" value={startB} set={setStartB} pool={pool} score={score} projection={projectedFantasyPoints}/>
         </div>
         {startWinner&&<div className="result glass">
-          <h3>START {name(startWinner).toUpperCase()}</h3>
+          <h3 className="resultPlayerTitle"><PlayerAvatar p={startWinner} size="lg"/><span>START {name(startWinner).toUpperCase()}</span></h3>
           <p>{projectionFor(startWinner)
             ? `${name(startWinner)} has the stronger provider-backed weekly outlook for your scoring format.`
             : `${name(startWinner)} currently grades ahead of ${name(startLoser)} in FTW fallback mode because a paid projection feed is not configured.`}</p>
@@ -380,7 +390,7 @@ export default function Dashboard(){
           const delta=d?(providerUpgrade!==null?Math.round((pProj-dProj)*10)/10:score(p)-score(d)):0;
           return <div className="waiver glass" key={t.player_id}>
             <div className="waiverTop">
-              <div><b>{name(p)}</b><small>{p.position} • {p.team||"FA"} • FTW decision score {score(p)}</small></div>
+              <div className="playerIdentity"><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.position} • {p.team||"FA"} • FTW decision score {score(p)}</small></span></div>
               <div><strong>+{t.count}</strong><small>24H Sleeper adds</small></div>
             </div>
             <div className="waiverExplain">
@@ -417,6 +427,6 @@ export default function Dashboard(){
 
 function Head({kicker,title}){return <div className="head"><div><small>{kicker}</small><h2>{title}</h2></div></div>}
 function Stat({label,value}){return <div className="stat glass"><small>{label}</small><b>{value}</b></div>}
-function PlayerPicker({label,value,set,pool,score,projection}){const p=pool.find(x=>id(x)===String(value));return <div className="picker glass"><label>{label}</label><select value={value} onChange={e=>set(e.target.value)}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} — {p.position}</option>)}</select>{p&&<div className="focus"><strong>{projection?.(p)!==null?`${projection(p).toFixed(1)} pts`:score(p)}</strong><b>{name(p)}</b><small>{projection?.(p)!==null?"LIVE WEEKLY PROJECTION":"FTW FALLBACK SCORE"} • {p.position} • {p.team||"FA"} • {p.injury_status||p.status||"Active"}</small></div>}</div>}
+function PlayerPicker({label,value,set,pool,score,projection}){const p=pool.find(x=>id(x)===String(value));return <div className="picker glass"><label>{label}</label><select value={value} onChange={e=>set(e.target.value)}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} — {p.position}</option>)}</select>{p&&<div className="focus"><PlayerAvatar p={p} size="lg"/><div className="focusInfo"><strong>{projection?.(p)!==null?`${projection(p).toFixed(1)} pts`:score(p)}</strong><b>{name(p)}</b><small>{projection?.(p)!==null?"LIVE WEEKLY PROJECTION":"FTW FALLBACK SCORE"} • {p.position} • {p.team||"FA"} • {p.injury_status||p.status||"Active"}</small></div></div>}</div>}
 function Why({title,items}){return <div className="why"><b>{title}</b><ul>{items.filter(Boolean).slice(0,7).map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
-function TradeSide({label,ids,onChange,pool,value,valueFn}){return <div className="tradeSide glass"><label>{label}</label><select multiple size={10} value={ids} onChange={onChange}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} • {p.position} • {valueFn(p)}</option>)}</select><div className="package"><span>PACKAGE</span><b>{value}</b></div></div>}
+function TradeSide({label,ids,onChange,pool,value,valueFn}){return <div className="tradeSide glass"><label>{label}</label><select multiple size={10} value={ids} onChange={onChange}>{pool.map(p=><option value={id(p)} key={id(p)}>{name(p)} • {p.position} • {valueFn(p)}</option>)}</select><div className="tradeSelected">{ids.map(pid=>{const p=pool.find(x=>id(x)===String(pid));return p?<div className="tradeSelectedPlayer" key={pid}><PlayerAvatar p={p} size="xs"/><span>{name(p)}</span></div>:null})}</div><div className="package"><span>PACKAGE</span><b>{value}</b></div></div>}

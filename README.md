@@ -110,3 +110,10 @@ Player matching uses Sleeper player IDs first, which is more reliable than name 
 
 ## Sleeper projection hotfix
 This version corrects the projection host to `api.sleeper.com`, while keeping `api.sleeper.app` as a fallback. It also handles both array responses and object responses keyed by Sleeper player ID. Rows are only accepted when an actual weekly points field (`pts_ppr`, `pts_half_ppr`, or `pts_std`) exists.
+
+
+## Player headshots
+Player avatars now use Sleeper's NFL player headshot CDN, keyed directly by Sleeper player ID:
+`https://sleepercdn.com/content/nfl/players/thumb/<player_id>.jpg`
+
+Headshots appear beside players in the roster, optimized lineup, Start/Sit focus cards/results, waiver cards, and selected trade-player chips. If a headshot is unavailable, FTW automatically falls back to the player's initials so the layout never breaks.
