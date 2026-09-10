@@ -11,7 +11,7 @@ const DEMO = [
 ].map(([player_id,full_name,position,team,espn_id])=>({player_id,full_name,position,team,espn_id,active:true}));
 
 const NAV = [
-  ["team","⚡","Team"],["optimize","◎","Optimize"],["startsit","✓","Start/Sit"],
+  ["team","⚡","Team"],["optimize","◎","Optimize your Lineup"],["startsit","✓","Start/Sit"],
   ["trade","⇄","Trade"],["waivers","＋","Waivers"],["gm","◈","FTW GM"]
 ];
 
@@ -26,12 +26,38 @@ function name(p){return p?.full_name || [p?.first_name,p?.last_name].filter(Bool
 function id(p){return String(p?.player_id || "")}
 
 function PlayerAvatar({p,size="md"}){
-  const espnId = String(p?.espn_id || p?.espnId || p?.metadata?.espn_id || "");
+  const espnId=String(p?.espn_id||p?.espnId||p?.metadata?.espn_id||"");
+  const sleeperId=id(p);
   const initials=name(p).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
-  const src=espnId ? `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(espnId)}.png` : "";
+
+  const espnSrc=espnId
+    ? `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(espnId)}.png`
+    : "";
+  const sleeperSrc=sleeperId
+    ? `https://sleepercdn.com/content/nfl/players/${encodeURIComponent(sleeperId)}.jpg`
+    : "";
+
+  const firstSrc=espnSrc||sleeperSrc;
+
+  const handleError=(e)=>{
+    const img=e.currentTarget;
+    if(espnSrc && sleeperSrc && img.dataset.fallback!=="sleeper"){
+      img.dataset.fallback="sleeper";
+      img.src=sleeperSrc;
+      return;
+    }
+    img.style.display="none";
+  };
+
   return <span className={`playerAvatar ${size}`} aria-hidden="true">
     <span className="avatarFallback">{initials||"?"}</span>
-    {src&&<img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e=>{e.currentTarget.style.display="none"}}/>}
+    {firstSrc&&<img
+      src={firstSrc}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={handleError}
+    />}
   </span>
 }
 
@@ -151,6 +177,50 @@ export default function Dashboard(){
     if(format.sf&&p.position==="QB")s+=6;
     return Math.max(40,Math.min(99,Math.round(s)));
   };
+  const availabilityStatus=(p)=>{
+    const raw=String(p?.injury_status||p?.status||"").trim().toLowerCase();
+    return raw;
+  };
+
+  const isUnavailable=(p)=>{
+    const s=availabilityStatus(p);
+    return [
+      "out","ir","inactive","pup","suspended","reserve","nfi",
+      "physically unable to perform"
+    ].some(tag=>s===tag||s.includes(tag)) || s.includes("doubtful");
+  };
+
+  const lineupDecisionValue=(p)=>{
+    if(!p||isUnavailable(p))return -100000;
+
+    const proj=projectedFantasyPoints(p);
+    let value=proj!==null ? proj*10 : score(p);
+
+    const s=availabilityStatus(p);
+    if(s.includes("questionable")) value*=0.88;
+    else if(s.includes("gtd")||s.includes("game-time")) value*=0.82;
+    else if(s.includes("probable")) value*=0.98;
+
+    // A projection of zero usually means bye / no expected role this week.
+    if(proj!==null && proj<=0) value-=500;
+
+    // Small role/context tie-breakers only. Projection remains dominant.
+    if(p.depth_chart_order===1||p.depth_chart_position===1)value+=1.5;
+    if(addCount(p)>100)value+=0.4;
+    if(dropCount(p)>100)value-=0.4;
+
+    return value;
+  };
+
+  const lineupRiskLabel=(p)=>{
+    if(!p)return "";
+    const s=availabilityStatus(p);
+    if(isUnavailable(p))return "OUT";
+    if(s.includes("questionable"))return "QUESTIONABLE";
+    if(s.includes("gtd")||s.includes("game-time"))return "GTD";
+    return "";
+  };
+
   const tradeValue=(p)=>score(p)+(format.sf&&p.position==="QB"?8:p.position==="RB"?3:p.position==="TE"?3:0);
 
   const addCount=(p)=>trending.find(t=>String(t.player_id)===id(p))?.count||0;
@@ -230,14 +300,40 @@ export default function Dashboard(){
   const slots=()=>league?.roster_positions?.filter(x=>!["BN","IR","TAXI"].includes(x))||["QB","RB","RB","WR","WR","TE","FLEX"];
   const eligible=(p,s)=>p.position===s||(s==="FLEX"&&["RB","WR","TE"].includes(p.position))||(s==="SUPER_FLEX"&&["QB","RB","WR","TE"].includes(p.position))||(s==="WRRB_FLEX"&&["WR","RB"].includes(p.position))||(s==="REC_FLEX"&&["WR","TE"].includes(p.position));
   const optimal=useMemo(()=>{
-    let unused=[...pool].sort((a,b)=>score(b)-score(a));
-    const starters=slots().map(slot=>{
-      const i=unused.findIndex(p=>eligible(p,slot));
-      if(i<0)return {slot,p:null};
-      return {slot,p:unused.splice(i,1)[0]};
-    });
-    return {starters,bench:unused};
-  },[roster,league,format.label]);
+    const lineupSlots=slots();
+    const available=pool.filter(p=>!isUnavailable(p));
+
+    // Put restrictive slots first, then FLEX/SUPER_FLEX. This prevents a flex
+    // spot from stealing a player needed at a scarcer mandatory position.
+    const slotPriority=(s)=>{
+      if(s==="QB"||s==="RB"||s==="WR"||s==="TE"||s==="K"||s==="DEF")return 0;
+      if(s==="WRRB_FLEX"||s==="REC_FLEX")return 1;
+      if(s==="FLEX")return 2;
+      if(s==="SUPER_FLEX")return 3;
+      return 4;
+    };
+
+    const indexed=lineupSlots.map((slot,index)=>({slot,index})).sort((a,b)=>slotPriority(a.slot)-slotPriority(b.slot));
+    const chosen=new Map();
+    const used=new Set();
+
+    // Choose the best risk-adjusted weekly option for each legal slot.
+    for(const entry of indexed){
+      const candidates=available
+        .filter(p=>!used.has(id(p))&&eligible(p,entry.slot))
+        .sort((a,b)=>lineupDecisionValue(b)-lineupDecisionValue(a));
+      const pick=candidates[0]||null;
+      if(pick)used.add(id(pick));
+      chosen.set(entry.index,pick);
+    }
+
+    const starters=lineupSlots.map((slot,index)=>({slot,p:chosen.get(index)||null}));
+    const bench=pool
+      .filter(p=>!used.has(id(p)))
+      .sort((a,b)=>lineupDecisionValue(b)-lineupDecisionValue(a));
+
+    return {starters,bench};
+  },[roster,league,format.label,projectionFeed.retrievedAt,players]);
 
   const find=(x)=>pool.find(p=>id(p)===String(x))||Object.values(players).find(p=>id(p)===String(x));
   const A=find(startA),B=find(startB);
@@ -411,9 +507,10 @@ export default function Dashboard(){
       </section>}
 
       {tab==="optimize"&&<section>
-        <Head kicker="LINEUP ENGINE" title="Best Legal Lineup"/>
-        <div className="lineup">{optimal.starters.map((x,i)=><button type="button" className="slot glass playerCardButton" key={`${x.slot}-${i}`} onClick={()=>x.p&&openPlayer(x.p)}><span>{x.slot}</span>{x.p?<div className="slotPlayer"><PlayerAvatar p={x.p} size="sm"/><b>{name(x.p)}</b></div>:<b>EMPTY</b>}<em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em></button>)}</div>
-        <div className="result glass"><h3>BENCH CHECK</h3><p>{optimal.bench[0]?`${name(optimal.bench[0])} is your highest-rated bench player at FTW ${score(optimal.bench[0])}. Recheck late injury news before kickoff.`:"No extra bench player is available."}</p></div>
+        <Head kicker="LINEUP ENGINE" title="Optimize your Lineup"/>
+        <div className="explainer glass"><b>How FTW optimizes:</b> Weekly projections are the primary signal. Players listed Out, IR, Inactive, PUP, Suspended or Doubtful are removed from the suggested starters. Questionable and game-time-decision players receive a risk penalty, then FTW fills only legal lineup slots with the highest risk-adjusted weekly outlook.</div>
+        <div className="lineup">{optimal.starters.map((x,i)=><button type="button" className="slot glass playerCardButton" key={`${x.slot}-${i}`} onClick={()=>x.p&&openPlayer(x.p)}><span>{x.slot}</span>{x.p?<div className="slotPlayer"><PlayerAvatar p={x.p} size="sm"/><b>{name(x.p)}</b></div>:<b>EMPTY</b>}<em>{x.p?(projectedFantasyPoints(x.p)!==null?`${projectedFantasyPoints(x.p).toFixed(1)} PTS`:"PROJ —"):"--"}</em>{x.p&&lineupRiskLabel(x.p)&&<small className="lineupRisk">{lineupRiskLabel(x.p)}</small>}</button>)}</div>
+        <div className="result glass"><h3>BENCH CHECK</h3><p>{optimal.bench.find(p=>!isUnavailable(p))?`${name(optimal.bench.find(p=>!isUnavailable(p)))} is your highest-rated available bench option based on this week's risk-adjusted outlook. Recheck late injury news before kickoff.`:"No healthy bench alternative is currently available."}</p></div>
       </section>}
 
       {tab==="startsit"&&<section>

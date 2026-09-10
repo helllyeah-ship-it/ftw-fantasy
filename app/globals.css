@@ -417,3 +417,16 @@ button,input,select{font:inherit}.topbar{height:66px;position:sticky;top:0;z-ind
   .modalSectionHead{align-items:flex-start;flex-direction:column}
   .modalSectionHead>span{text-align:left}
 }
+
+.lineupRisk{
+  display:inline-flex;
+  margin-top:6px;
+  width:max-content;
+  padding:3px 6px;
+  border-radius:999px;
+  border:1px solid rgba(255,230,109,.28);
+  color:var(--yellow);
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.6px;
+}

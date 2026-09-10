@@ -140,3 +140,12 @@ Every player can now open a fantasy profile modal. The modal includes:
 The profile API route is `/api/player/insight`.
 
 Future weekly projections come from the same Sleeper projection adapter used elsewhere in FTW. Schedule and player-news data are requested server-side from ESPN endpoints. Schedule difficulty is intentionally transparent: each matchup is labeled EASY / MEDIUM / HARD based on that player's projected points for that week compared with the player's own average across remaining projected games. This avoids pretending the label is an official ESPN defensive matchup grade.
+
+
+## Optimize your Lineup accuracy + avatar upgrade
+- Renamed the Optimize tab to **Optimize your Lineup**.
+- Players listed Out, IR, Inactive, PUP, Suspended, Reserve/NFI, or Doubtful are excluded from suggested starters.
+- Questionable and game-time-decision players receive a risk discount instead of being treated as fully healthy.
+- Weekly projected points are the primary lineup signal; depth chart and player movement are minor tie-breakers.
+- The optimizer fills mandatory position slots before flexible slots to reduce bad roster assignments.
+- Player photos now try ESPN first and automatically fall back to Sleeper's player headshot CDN before showing initials.
