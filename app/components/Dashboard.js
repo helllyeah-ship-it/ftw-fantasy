@@ -406,7 +406,7 @@ export default function Dashboard(){
         </div>
         <div className="roster glass">
           <div className="row rowHead"><span>PLAYER</span><span>POS</span><span>WEEK PROJ</span><span>STATUS</span></div>
-          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><button type="button" className="row playerRowButton" key={id(p)} onClick={()=>openPlayer(p)}><span className="playerIdentity"><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?`${projectedFantasyPoints(p).toFixed(1)} pts`:"—"}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></div>)}
+          {[...pool].sort((a,b)=>score(b)-score(a)).map(p=><button type="button" className="row playerRowButton" key={id(p)} onClick={()=>openPlayer(p)}><span className="playerIdentity"><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.team||"FA"}</small></span></span><span className="pink">{p.position}</span><span className="projection">{projectedFantasyPoints(p)!==null?`${projectedFantasyPoints(p).toFixed(1)} pts`:"—"}</span><span className={p.injury_status?"warn":"ok"}>{p.injury_status||p.status||"Active"}</span></button>)}
         </div>
       </section>}
 
@@ -475,7 +475,7 @@ export default function Dashboard(){
           const delta=d?(providerUpgrade!==null?Math.round((pProj-dProj)*10)/10:score(p)-score(d)):0;
           return <div className="waiver glass" key={t.player_id}>
             <div className="waiverTop">
-              <button type="button" className="playerIdentity playerIdentityButton" onClick={()=>openPlayer(p)}><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.position} • {p.team||"FA"} • FTW decision score {score(p)}</small></span></div>
+              <button type="button" className="playerIdentity playerIdentityButton" onClick={()=>openPlayer(p)}><PlayerAvatar p={p}/><span><b>{name(p)}</b><small>{p.position} • {p.team||"FA"} • FTW decision score {score(p)}</small></span></button>
               <div><strong>+{t.count}</strong><small>24H Sleeper adds</small></div>
             </div>
             <button type="button" className="profileLink" onClick={()=>openPlayer(p)}>VIEW PLAYER PROFILE</button>
