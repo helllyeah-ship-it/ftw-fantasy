@@ -934,15 +934,31 @@ export default function Dashboard(){
                 </div>
               </div>
 
-              {selectedPlayer&&projectionFor(selectedPlayer)&&<div className="modalSection workloadSection">
+              {selectedPlayer&&projectionFor(selectedPlayer)&&(()=>{const pr=projectionFor(selectedPlayer);const position=selectedPlayer.position;const totalTds=Number(pr?.rushingTouchdowns||0)+Number(pr?.receivingTouchdowns||0);return <div className="modalSection workloadSection">
                 <div className="modalSectionHead"><div><small>PROJECTED OPPORTUNITY</small><h3>Expected workload</h3></div></div>
                 <div className="workloadGrid">
-                  {Number(projectionFor(selectedPlayer)?.passingAttempts||0)>0&&<div><small>PASS ATT</small><b>{Number(projectionFor(selectedPlayer).passingAttempts).toFixed(1)}</b></div>}
-                  {Number(projectionFor(selectedPlayer)?.rushingAttempts||0)>0&&<div><small>CARRIES</small><b>{Number(projectionFor(selectedPlayer).rushingAttempts).toFixed(1)}</b></div>}
-                  {Number(projectionFor(selectedPlayer)?.receivingTargets||0)>0&&<div><small>TARGETS</small><b>{Number(projectionFor(selectedPlayer).receivingTargets).toFixed(1)}</b></div>}
-                  {Number(projectionFor(selectedPlayer)?.receptions||0)>0&&<div><small>RECEPTIONS</small><b>{Number(projectionFor(selectedPlayer).receptions).toFixed(1)}</b></div>}
+                  {position==="QB"&&<div><small>PASS ATT</small><b>{Number(pr?.passingAttempts||0).toFixed(1)}</b></div>}
+                  {position==="QB"&&<div><small>PASS YDS</small><b>{Number(pr?.passingYards||0).toFixed(1)}</b></div>}
+                  {position==="QB"&&<div><small>PASS TD</small><b>{Number(pr?.passingTouchdowns||0).toFixed(2)}</b></div>}
+                  {position==="QB"&&Number(pr?.rushingAttempts||0)>0&&<div><small>CARRIES</small><b>{Number(pr.rushingAttempts).toFixed(1)}</b></div>}
+                  {position==="QB"&&Number(pr?.rushingYards||0)>0&&<div><small>RUSH YDS</small><b>{Number(pr.rushingYards).toFixed(1)}</b></div>}
+                  {position==="QB"&&Number(pr?.rushingTouchdowns||0)>0&&<div><small>RUSH TD</small><b>{Number(pr.rushingTouchdowns).toFixed(2)}</b></div>}
+
+                  {["WR","TE"].includes(position)&&Number(pr?.receivingTargets||0)>0&&<div><small>TARGETS</small><b>{Number(pr.receivingTargets).toFixed(1)}</b></div>}
+                  {["WR","TE"].includes(position)&&Number(pr?.receptions||0)>0&&<div><small>RECEPTIONS</small><b>{Number(pr.receptions).toFixed(1)}</b></div>}
+                  {["WR","TE"].includes(position)&&Number(pr?.receivingYards||0)>0&&<div><small>REC YDS</small><b>{Number(pr.receivingYards).toFixed(1)}</b></div>}
+                  {["WR","TE"].includes(position)&&<div><small>REC TD</small><b>{Number(pr?.receivingTouchdowns||0).toFixed(2)}</b></div>}
+
+                  {position==="RB"&&Number(pr?.rushingAttempts||0)>0&&<div><small>CARRIES</small><b>{Number(pr.rushingAttempts).toFixed(1)}</b></div>}
+                  {position==="RB"&&Number(pr?.rushingYards||0)>0&&<div><small>RUSH YDS</small><b>{Number(pr.rushingYards).toFixed(1)}</b></div>}
+                  {position==="RB"&&Number(pr?.receivingTargets||0)>0&&<div><small>TARGETS</small><b>{Number(pr.receivingTargets).toFixed(1)}</b></div>}
+                  {position==="RB"&&Number(pr?.receptions||0)>0&&<div><small>RECEPTIONS</small><b>{Number(pr.receptions).toFixed(1)}</b></div>}
+                  {position==="RB"&&Number(pr?.receivingYards||0)>0&&<div><small>REC YDS</small><b>{Number(pr.receivingYards).toFixed(1)}</b></div>}
+                  {position==="RB"&&<div><small>RUSH TD</small><b>{Number(pr?.rushingTouchdowns||0).toFixed(2)}</b></div>}
+                  {position==="RB"&&<div><small>REC TD</small><b>{Number(pr?.receivingTouchdowns||0).toFixed(2)}</b></div>}
+                  {position==="RB"&&<div><small>TOTAL TD</small><b>{totalTds.toFixed(2)}</b></div>}
                 </div>
-              </div>}
+              </div>})()}
 
               <div className="modalColumns">
                 <div className="modalSection">

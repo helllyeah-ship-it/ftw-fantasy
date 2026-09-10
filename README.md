@@ -226,3 +226,10 @@ Rank #1 is toughest and #32 is most favorable.
 - Green: #23–32
 
 This guarantees the color distribution comes from a complete league-wide ranking instead of independently classifying raw ESPN fields. The API rejects incomplete data unless all 32 NFL teams are present.
+
+## Projected Opportunity upgrade
+Player profiles now expose position-specific weekly projected production:
+- WR / TE: targets, receptions, receiving yards and receiving touchdowns.
+- RB: carries, rushing yards, targets, receptions, receiving yards, rushing touchdowns, receiving touchdowns and total touchdowns.
+- QB: pass attempts, passing yards and passing touchdowns when available.
+Fractional touchdown values are expected-value projections, not a claim that a player can score a fraction of a touchdown in an actual game.
