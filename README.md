@@ -83,37 +83,27 @@ Live factual inputs come from Sleeper's documented API where available:
 The FTW decision score and trade percentage remain FTW model outputs, not official live statistics or licensed projections. This distinction is shown directly in the UI.
 
 
-## SportsDataIO provider upgrade
-
-FTW Fantasy now supports provider-backed weekly NFL projections through SportsDataIO.
-
-### Turn it on in Vercel
-1. Create a SportsDataIO account / NFL API subscription or trial.
-2. Copy the API key.
-3. In Vercel open **Project → Settings → Environment Variables**.
-4. Add:
-   - Name: `SPORTSDATAIO_API_KEY`
-   - Value: your SportsDataIO API key
-5. Redeploy FTW Fantasy.
-
-The API key is used only in a server-side Next.js route and is never sent to the browser.
-
-### What FTW now uses from the provider
-When the key is configured, FTW loads the current week's player projection feed and can use:
-- projected fantasy points calculated for the connected Sleeper league's scoring rules
-- projected passing attempts/yards/TDs/interceptions
-- projected rushing attempts/yards/TDs
-- projected targets/receptions/receiving yards/TDs
-- projected fumbles and two-point conversions
-- provider active/started/player status fields when present
-
-FTW matches SportsDataIO players to Sleeper players by normalized player name and team. This avoids exposing provider IDs in the UI.
-
-### Refresh behavior
-The FTW server route caches projection calls for 5 minutes. This is intentionally much fresher than the daily Sleeper player-map cache and is appropriate for lineup decision periods.
-
-### Fallback behavior
-If `SPORTSDATAIO_API_KEY` is missing or the provider is unavailable, FTW clearly switches back to its heuristic decision model rather than displaying fake provider projections.
 
 ## Weekly projection-first UI
-The lineup optimizer and roster views now display weekly projected fantasy points instead of the internal whole-number FTW score whenever the SportsDataIO feed is connected. If the projection provider is unavailable, the UI shows `PROJ —` rather than presenting the fallback model as a weekly projection.
+The lineup optimizer and roster views now display weekly projected fantasy points instead of the internal whole-number FTW score whenever the JerryGM feed is connected. If the projection provider is unavailable, the UI shows `PROJ —` rather than presenting the fallback model as a weekly projection.
+
+
+
+## HuddleBot weekly projection provider
+
+FTW Fantasy now uses HuddleBot as its external weekly projection source.
+
+### Setup
+No API key or account is required.
+
+The server route `/api/provider/projections` requests HuddleBot's public projection feed and caches results for five minutes. FTW matches returned players to Sleeper players by Sleeper ID when available, then falls back to normalized player name + team.
+
+### Reliability safeguard
+HuddleBot is a small independent public service and its public documentation does not expose every endpoint detail in search-indexed text. To make the integration resilient, the adapter checks the common public projection routes and supports an optional `HUDDLEBOT_API_URL` Netlify environment variable if HuddleBot changes the route.
+
+If HuddleBot is unreachable or changes its response format, FTW stays online and falls back to its internal model instead of displaying false provider projections.
+
+### Data sources
+- Sleeper: league, roster, player status, scoring settings and trending movement
+- HuddleBot: weekly fantasy projection when its public feed is available
+- FTW: lineup, Start/Sit, trade and waiver decision logic

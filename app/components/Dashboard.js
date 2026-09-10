@@ -45,7 +45,7 @@ export default function Dashboard(){
   const [pos,setPos]=useState("ALL");
   const [gmMessages,setGmMessages]=useState([{who:"bot",text:"Ask me about your roster, trades, starters or waivers."}]);
   const [gmText,setGmText]=useState("");
-  const [projectionFeed,setProjectionFeed]=useState({configured:false,provider:"SportsDataIO",retrievedAt:null,projections:[]});
+  const [projectionFeed,setProjectionFeed]=useState({configured:false,provider:"HuddleBot",retrievedAt:null,projections:[]});
   const [projectionError,setProjectionError]=useState("");
 
   useEffect(()=>{
@@ -78,6 +78,9 @@ export default function Dashboard(){
   const normalizeName=(s)=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
   const projectionFor=(p)=>{
     if(!p || !projectionFeed?.projections?.length) return null;
+    const pid=id(p);
+    const bySleeper=projectionFeed.projections.find(x=>x.sleeperId && String(x.sleeperId)===pid);
+    if(bySleeper)return bySleeper;
     const n=normalizeName(name(p));
     const team=String(p.team||"").toUpperCase();
     return projectionFeed.projections.find(x=>
@@ -94,29 +97,8 @@ export default function Dashboard(){
 
   const projectedFantasyPoints=(p)=>{
     const pr=projectionFor(p);
-    if(!pr)return null;
-    const s=league?.scoring_settings||{};
-    const val=(key,def)=>Number(s[key] ?? def);
-
-    let pts=0;
-    pts += pr.passingYards * val("pass_yd",0.04);
-    pts += pr.passingTouchdowns * val("pass_td",4);
-    pts += pr.passingInterceptions * val("pass_int",-2);
-    pts += pr.rushingYards * val("rush_yd",0.1);
-    pts += pr.rushingTouchdowns * val("rush_td",6);
-    pts += pr.receivingYards * val("rec_yd",0.1);
-    pts += pr.receivingTouchdowns * val("rec_td",6);
-    pts += pr.receptions * val("rec",format.ppr);
-    pts += pr.fumblesLost * val("fum_lost",-2);
-    pts += pr.twoPointPasses * val("pass_2pt",2);
-    pts += pr.twoPointRuns * val("rush_2pt",2);
-    pts += pr.twoPointReceptions * val("rec_2pt",2);
-
-    if(p.position==="TE" && Number(s.bonus_rec_te||0)>0){
-      pts += pr.receptions * Number(s.bonus_rec_te||0);
-    }
-
-    return Math.round(pts*10)/10;
+    if(!pr || !Number.isFinite(Number(pr.projectedPoints))) return null;
+    return Math.round(Number(pr.projectedPoints)*10)/10;
   };
 
   const score=(p)=>{
@@ -299,10 +281,11 @@ export default function Dashboard(){
       <section className="providerBar glass">
         <div>
           <small>PROJECTION ENGINE</small>
-          <b>{projectionFeed.configured ? "SPORTSDATAIO CONNECTED" : "SPORTSDATAIO NOT CONFIGURED"}</b>
+          <b>{projectionFeed.configured ? "HUDDLEBOT CONNECTED" : "HUDDLEBOT FEED UNAVAILABLE"}</b>
           <span>{projectionFeed.configured
             ? `${projectionFeed.projections.length} weekly player projections loaded${projectionFeed.retrievedAt?` • refreshed ${new Date(projectionFeed.retrievedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`:""}`
-            : "Add SPORTSDATAIO_API_KEY in Vercel to turn on live weekly projections."}</span>
+            : "No API key is required. FTW will use its fallback model if the public HuddleBot feed is unavailable."}</span>
+          {projectionFeed.configured&&<span className="providerAttribution">Public HuddleBot projection feed • no API key</span>}
         </div>
         <div className={projectionFeed.configured?"providerDot on":"providerDot"} />
       </section>
@@ -354,7 +337,7 @@ export default function Dashboard(){
             startWinner.injury_status ? `Risk: ${startWinner.injury_status} injury designation should be checked again before lineup lock` : "No current Sleeper injury designation is shown",
             `The recommendation is tuned to your ${format.label} scoring format`
           ]}/>
-          <div className="accuracyNote"><b>Data source:</b> {projectionFor(startWinner) ? "weekly statistical projection from SportsDataIO + your Sleeper league settings and live player metadata." : "Sleeper live metadata + FTW fallback model. Add a SportsDataIO key to enable provider projections."}</div>
+          <div className="accuracyNote"><b>Data source:</b> {projectionFor(startWinner) ? "weekly projection from HuddleBot + your Sleeper league settings and live player metadata." : "Sleeper live metadata + FTW fallback model because the HuddleBot feed is currently unavailable."}</div>
         </div>}
       </section>}
 
@@ -423,7 +406,7 @@ export default function Dashboard(){
       <section className="ticker glass"><b>FTW WIRE</b><span>{trending.slice(0,8).map(t=>players[t.player_id]).filter(Boolean).map(name).join(" • ")||"Connecting to live player movement…"}</span></section>
     </div>
 
-    <footer><b>FTW FANTASY</b><span>Fantasy decisions without the clutter.</span><small>League/roster/player movement uses Sleeper. Weekly projections use SportsDataIO when configured. FTW combines those inputs into recommendations; no projection guarantees an outcome.</small></footer>
+    <footer><b>FTW FANTASY</b><span>Fantasy decisions without the clutter.</span><small>League/roster/player movement uses Sleeper. Weekly projections use HuddleBot when its public feed is available. FTW combines those inputs into recommendations; no projection guarantees an outcome.</small></footer>
   </main>
 }
 

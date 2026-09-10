@@ -1,4 +1,4 @@
-import { sportsDataIO, normalizeProjection } from "@/lib/sportsdataio";
+import { huddleBotProjections } from "@/lib/huddlebot";
 
 export async function GET(req) {
   const url = new URL(req.url);
@@ -10,40 +10,29 @@ export async function GET(req) {
   }
 
   try {
-    const result = await sportsDataIO(
-      `/PlayerGameProjectionStatsByWeek/${encodeURIComponent(season)}/${encodeURIComponent(week)}`,
-      300
-    );
-
-    if (!result.configured) {
-      return Response.json({
-        configured: false,
-        provider: "SportsDataIO",
-        retrievedAt: new Date().toISOString(),
-        projections: []
-      });
-    }
-
-    const projections = Array.isArray(result.data)
-      ? result.data.map(normalizeProjection)
-      : [];
+    const result = await huddleBotProjections({
+      season: Number(season),
+      week: Number(week)
+    });
 
     return Response.json({
-      configured: true,
-      provider: "SportsDataIO",
+      configured: result.configured,
+      provider: "HuddleBot",
       retrievedAt: new Date().toISOString(),
       season: Number(season),
       week: Number(week),
-      projections
-    });
+      endpoint: result.endpoint || null,
+      projections: result.projections || [],
+      errors: result.configured ? undefined : result.errors
+    }, { status: 200 });
   } catch (error) {
     return Response.json({
-      configured: true,
-      provider: "SportsDataIO",
-      error: "Projection provider request failed",
+      configured: false,
+      provider: "HuddleBot",
+      error: "HuddleBot projection request failed",
       detail: String(error?.message || error),
       retrievedAt: new Date().toISOString(),
       projections: []
-    }, { status: 502 });
+    }, { status: 200 });
   }
 }

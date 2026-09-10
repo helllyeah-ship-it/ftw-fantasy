@@ -45,3 +45,5 @@ button,input,select{font:inherit}.topbar{height:66px;position:sticky;top:0;z-ind
 @media(max-width:620px){
   .row,.rowHead{grid-template-columns:1fr 38px 70px 62px}
 }
+
+.providerAttribution{opacity:.7;font-size:9px!important;margin-top:2px}
